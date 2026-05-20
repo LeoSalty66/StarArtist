@@ -4,9 +4,11 @@ interface Props {
 }
 
 const CHAPTERS = [
-  { id: 1, title: 'Chapter 1', subtitle: 'First Light' },
-  { id: 2, title: 'Chapter 2', subtitle: 'Crooked Skies' },
-  { id: 3, title: 'Chapter 3', subtitle: 'Strange Constellations' },
+  { id: 1, title: 'Five Pointed Star Challenge' },
+  { id: 2, title: 'FPSC: Alphabetical' },
+  { id: 3, title: 'Unchained' },
+  { id: 4, title: 'Unchained: Alphabetical' },
+  { id: 5, title: 'Ambiguation' },
 ];
 
 function ChaptersScreen({ onBack, onSelectChapter }: Props) {
@@ -27,7 +29,6 @@ function ChaptersScreen({ onBack, onSelectChapter }: Props) {
               onClick={() => onSelectChapter(ch.id)}
             >
               <span className="chapter-number">{ch.title}</span>
-              <span className="chapter-subtitle">{ch.subtitle}</span>
             </button>
           ))}
         </div>
