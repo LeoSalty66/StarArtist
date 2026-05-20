@@ -257,12 +257,13 @@ body {
   background: #0a0e1a;
   position: relative;
   overflow: hidden;
-  padding: 1.5rem;
+  padding: 1rem;
 }
 
 .drawing-canvas {
   width: 100%;
   max-width: min(100%, 80vh);
+  max-height: 100%;
   aspect-ratio: 1;
   background: #040810;
   border: 1px solid rgba(126, 200, 227, 0.15);

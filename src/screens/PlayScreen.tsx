@@ -13,12 +13,41 @@ interface Props {
   onComplete: () => void;
 }
 
-/** Convert normalized lines to pixel lines given canvas dimensions. */
+/** Convert normalized lines to pixel lines, centered and scaled to fit the canvas with padding. */
 function denormalize(nl: NormalizedLine[], w: number, h: number): Line[] {
+  if (nl.length === 0) return [];
+
+  // Find bounding box of all points in normalized space.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nl) {
+    minX = Math.min(minX, n.ax, n.bx);
+    minY = Math.min(minY, n.ay, n.by);
+    maxX = Math.max(maxX, n.ax, n.bx);
+    maxY = Math.max(maxY, n.ay, n.by);
+  }
+
+  const bboxW = maxX - minX || 0.01;
+  const bboxH = maxY - minY || 0.01;
+
+  // Scale to fit within 80% of the canvas (10% padding each side).
+  const padding = 0.1;
+  const availW = w * (1 - 2 * padding);
+  const availH = h * (1 - 2 * padding);
+  const scale = Math.min(availW / bboxW, availH / bboxH);
+
+  // Center offset.
+  const offsetX = (w - bboxW * scale) / 2;
+  const offsetY = (h - bboxH * scale) / 2;
+
+  const transform = (nx: number, ny: number) => ({
+    x: (nx - minX) * scale + offsetX,
+    y: (ny - minY) * scale + offsetY,
+  });
+
   return nl.map((n, i) => ({
     id: `given-${i}`,
-    a: { x: n.ax * w, y: n.ay * h },
-    b: { x: n.bx * w, y: n.by * h },
+    a: transform(n.ax, n.ay),
+    b: transform(n.bx, n.by),
   }));
 }
 
@@ -34,7 +63,11 @@ function PlayScreen({ level, onBack, onComplete }: Props) {
     const measure = () => {
       const el = wrapperRef.current;
       if (!el) return;
-      setCanvasSize({ w: el.clientWidth, h: el.clientHeight });
+      // The SVG is square, constrained by min(width, height) of wrapper minus padding.
+      const rect = el.getBoundingClientRect();
+      const available = Math.min(rect.width, rect.height) - 32; // 1rem padding * 2
+      const size = Math.min(available, rect.height * 0.8);
+      setCanvasSize({ w: size > 0 ? size : rect.width, h: size > 0 ? size : rect.height });
     };
     measure();
     window.addEventListener('resize', measure);
