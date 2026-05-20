@@ -100,49 +100,50 @@ function PlayScreen({ level, onBack, onComplete }: Props) {
             : `Lines remaining: ${linesRemaining}`}
         </span>
       </header>
-      {!locked && (
-        <Toolbar
-          tool={tool}
-          onToolChange={setTool}
-          onUndo={drawing.undo}
-          onRedo={drawing.redo}
-          onClear={drawing.clear}
-          canUndo={drawing.canUndo}
-          canRedo={drawing.canRedo}
-          lineCount={drawing.lines.length}
-        />
-      )}
-      <div className="canvas-wrapper" ref={wrapperRef}>
-        {canvasSize && (
-          <DrawingCanvas
-            tool={locked ? 'pen' : atBudget && tool === 'pen' ? 'pen' : tool}
-            lines={allLines}
-            onAddLine={handleAddLine}
-            onRemoveLine={(id) => {
-              // Only allow removing player-drawn lines.
-              if (id.startsWith('given-')) return;
-              drawing.removeLine(id);
-            }}
-            onMovePoint={(moves) => {
-              // Only allow moving player-drawn line endpoints.
-              const playerMoves = moves.filter((m) => !m.lineId.startsWith('given-'));
-              if (playerMoves.length > 0) drawing.movePoint(playerMoves);
-            }}
-            locked={locked}
-            boilActive={boilActive}
-            successOverlay={
-              analysis.isValidStar && analysis.pentagonIdx !== null ? (
-                <SuccessOverlay
-                  graph={analysis.graph}
-                  pentagon={analysis.boundedFaces[analysis.pentagonIdx]}
-                  triangles={analysis.triangleIdxs.map(
-                    (i) => analysis.boundedFaces[i],
-                  )}
-                />
-              ) : undefined
-            }
+      <div className="canvas-area">
+        <div className="canvas-wrapper" ref={wrapperRef}>
+          {canvasSize && (
+            <DrawingCanvas
+              tool={locked ? 'pen' : atBudget && tool === 'pen' ? 'pen' : tool}
+              lines={allLines}
+              onAddLine={handleAddLine}
+              onRemoveLine={(id) => {
+                if (id.startsWith('given-')) return;
+                drawing.removeLine(id);
+              }}
+              onMovePoint={(moves) => {
+                const playerMoves = moves.filter((m) => !m.lineId.startsWith('given-'));
+                if (playerMoves.length > 0) drawing.movePoint(playerMoves);
+              }}
+              locked={locked}
+              boilActive={boilActive}
+              successOverlay={
+                analysis.isValidStar && analysis.pentagonIdx !== null ? (
+                  <SuccessOverlay
+                    graph={analysis.graph}
+                    pentagon={analysis.boundedFaces[analysis.pentagonIdx]}
+                    triangles={analysis.triangleIdxs.map(
+                      (i) => analysis.boundedFaces[i],
+                    )}
+                  />
+                ) : undefined
+              }
+            />
+          )}
+        </div>
+        {!locked && (
+          <Toolbar
+            tool={tool}
+            onToolChange={setTool}
+            onUndo={drawing.undo}
+            onRedo={drawing.redo}
+            onClear={drawing.clear}
+            canUndo={drawing.canUndo}
+            canRedo={drawing.canRedo}
+            lineCount={drawing.lines.length}
           />
         )}
+      </div>
       </div>
       {/* Analyzer feedback bar */}
       <div className={`analyzer-bar ${locked ? 'success' : ''}`}>

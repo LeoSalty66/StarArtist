@@ -185,23 +185,26 @@ body {
 
 .toolbar {
   display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem;
   background: #0f1525;
-  border-bottom: 1px solid rgba(126, 200, 227, 0.12);
-  flex-wrap: wrap;
+  border-left: 1px solid rgba(126, 200, 227, 0.12);
+  width: 160px;
+  flex-shrink: 0;
 }
 
 .toolbar-group {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
 }
 
 .toolbar-info {
-  margin-left: auto;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   opacity: 0.7;
+  text-align: center;
+  margin-top: auto;
 }
 
 .tool-btn {
@@ -239,23 +242,33 @@ body {
 
 /* ---------- Drawing canvas ---------- */
 
-.canvas-wrapper {
+.canvas-area {
   flex: 1;
   display: flex;
-  background: #060a14;
-  position: relative;
+  flex-direction: row;
   overflow: hidden;
 }
 
-.drawing-canvas {
+.canvas-wrapper {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0e1a;
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem;
+}
+
+.drawing-canvas {
   width: 100%;
-  height: 100%;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(126, 200, 227, 0.04), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(176, 136, 249, 0.04), transparent 40%),
-    #060a14;
+  max-width: min(100%, 80vh);
+  aspect-ratio: 1;
+  background: #040810;
+  border: 1px solid rgba(126, 200, 227, 0.15);
+  border-radius: 8px;
   user-select: none;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.4);
 }
 
 .drawing-canvas.tool-pen {

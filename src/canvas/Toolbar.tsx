@@ -31,21 +31,21 @@ function Toolbar({
           onClick={() => onToolChange('pen')}
           title="Pen (press & drag to draw a line)"
         >
-          ✏️ Pen
+          Pen
         </button>
         <button
           className={`tool-btn ${tool === 'move' ? 'active' : ''}`}
           onClick={() => onToolChange('move')}
           title="Move (drag an endpoint to reposition)"
         >
-          ✋ Move
+          Move
         </button>
         <button
           className={`tool-btn ${tool === 'eraser' ? 'active' : ''}`}
           onClick={() => onToolChange('eraser')}
           title="Eraser (click a line to remove it)"
         >
-          🧽 Eraser
+          Eraser
         </button>
       </div>
 
@@ -72,7 +72,7 @@ function Toolbar({
           disabled={lineCount === 0}
           title="Clear all lines"
         >
-          🗑 Clear
+          Clear
         </button>
       </div>
 
@@ -84,7 +84,7 @@ function Toolbar({
             disabled={lineCount === 0}
             title="Export lines as level JSON (copies to clipboard)"
           >
-            📋 Export
+            Export
           </button>
         </div>
       )}

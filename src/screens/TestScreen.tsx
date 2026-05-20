@@ -77,41 +77,43 @@ function TestScreen({ onBack }: Props) {
             : exportMessage || 'Draw a 5-pointed star. Press & drag to draw lines.'}
         </span>
       </header>
-      {!locked && (
-        <Toolbar
-          tool={tool}
-          onToolChange={setTool}
-          onUndo={drawing.undo}
-          onRedo={drawing.redo}
-          onClear={drawing.clear}
-          canUndo={drawing.canUndo}
-          canRedo={drawing.canRedo}
-          lineCount={drawing.lines.length}
-          onExport={handleExport}
-        />
-      )}
-      <div className="canvas-wrapper" ref={wrapperRef}>
-        <DrawingCanvas
-          tool={locked ? 'pen' : tool}
-          lines={drawing.lines}
-          onAddLine={drawing.addLine}
-          onRemoveLine={drawing.removeLine}
-          onMovePoint={drawing.movePoint}
-          locked={locked}
-          boilActive={boilActive}
-          successOverlay={
-            analysis.isValidStar &&
-            analysis.pentagonIdx !== null ? (
-              <SuccessOverlay
-                graph={analysis.graph}
-                pentagon={analysis.boundedFaces[analysis.pentagonIdx]}
-                triangles={analysis.triangleIdxs.map(
-                  (i) => analysis.boundedFaces[i],
-                )}
-              />
-            ) : undefined
-          }
-        />
+      <div className="canvas-area">
+        <div className="canvas-wrapper" ref={wrapperRef}>
+          <DrawingCanvas
+            tool={locked ? 'pen' : tool}
+            lines={drawing.lines}
+            onAddLine={drawing.addLine}
+            onRemoveLine={drawing.removeLine}
+            onMovePoint={drawing.movePoint}
+            locked={locked}
+            boilActive={boilActive}
+            successOverlay={
+              analysis.isValidStar &&
+              analysis.pentagonIdx !== null ? (
+                <SuccessOverlay
+                  graph={analysis.graph}
+                  pentagon={analysis.boundedFaces[analysis.pentagonIdx]}
+                  triangles={analysis.triangleIdxs.map(
+                    (i) => analysis.boundedFaces[i],
+                  )}
+                />
+              ) : undefined
+            }
+          />
+        </div>
+        {!locked && (
+          <Toolbar
+            tool={tool}
+            onToolChange={setTool}
+            onUndo={drawing.undo}
+            onRedo={drawing.redo}
+            onClear={drawing.clear}
+            canUndo={drawing.canUndo}
+            canRedo={drawing.canRedo}
+            lineCount={drawing.lines.length}
+            onExport={handleExport}
+          />
+        )}
       </div>
       {/* Analyzer feedback bar */}
       <div className={`analyzer-bar ${locked ? 'success' : ''}`}>
