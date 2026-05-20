@@ -40,15 +40,15 @@ function NightSky() {
                 <g key={j}>
                   <filter id={`sb-${i}-${j}-1`} x="-15%" y="-15%" width="130%" height="130%">
                     <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 1} result="n" />
-                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.012" xChannelSelector="R" yChannelSelector="G" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.06" xChannelSelector="R" yChannelSelector="G" />
                   </filter>
                   <filter id={`sb-${i}-${j}-2`} x="-15%" y="-15%" width="130%" height="130%">
                     <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 2} result="n" />
-                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.012" xChannelSelector="R" yChannelSelector="G" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.06" xChannelSelector="R" yChannelSelector="G" />
                   </filter>
                   <filter id={`sb-${i}-${j}-3`} x="-15%" y="-15%" width="130%" height="130%">
                     <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 3} result="n" />
-                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.012" xChannelSelector="R" yChannelSelector="G" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.06" xChannelSelector="R" yChannelSelector="G" />
                   </filter>
                 </g>
               ))}
