@@ -27,9 +27,16 @@ function Toolbar({
         <button
           className={`tool-btn ${tool === 'pen' ? 'active' : ''}`}
           onClick={() => onToolChange('pen')}
-          title="Pen (click two points to draw a line)"
+          title="Pen (press & drag to draw a line)"
         >
           ✏️ Pen
+        </button>
+        <button
+          className={`tool-btn ${tool === 'move' ? 'active' : ''}`}
+          onClick={() => onToolChange('move')}
+          title="Move (drag an endpoint to reposition)"
+        >
+          ✋ Move
         </button>
         <button
           className={`tool-btn ${tool === 'eraser' ? 'active' : ''}`}

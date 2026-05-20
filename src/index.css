@@ -262,6 +262,10 @@ body {
   cursor: crosshair;
 }
 
+.drawing-canvas.tool-move {
+  cursor: grab;
+}
+
 .drawing-canvas.tool-eraser {
   cursor: not-allowed;
 }

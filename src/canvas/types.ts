@@ -9,4 +9,4 @@ export interface Line {
   b: Point;
 }
 
-export type Tool = 'pen' | 'eraser';
+export type Tool = 'pen' | 'eraser' | 'move';

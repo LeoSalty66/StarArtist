@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import type { Line } from './types';
+import type { Line, Point } from './types';
 
 /**
  * Drawing state with undo/redo via history stacks.
@@ -27,6 +27,23 @@ export function useDrawingState() {
   const removeLine = useCallback((id: string) => {
     commit(lines.filter((l) => l.id !== id));
   }, [lines, commit]);
+
+  const movePoint = useCallback(
+    (moves: { lineId: string; endpoint: 'a' | 'b'; to: Point }[]) => {
+      const next = lines.map((l) => {
+        let newA = l.a;
+        let newB = l.b;
+        for (const m of moves) {
+          if (m.lineId === l.id && m.endpoint === 'a') newA = m.to;
+          if (m.lineId === l.id && m.endpoint === 'b') newB = m.to;
+        }
+        if (newA === l.a && newB === l.b) return l;
+        return { ...l, a: newA, b: newB };
+      });
+      commit(next);
+    },
+    [lines, commit],
+  );
 
   const clear = useCallback(() => {
     if (lines.length === 0) return;
@@ -57,6 +74,7 @@ export function useDrawingState() {
     lines,
     addLine,
     removeLine,
+    movePoint,
     clear,
     undo,
     redo,
