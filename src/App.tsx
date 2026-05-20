@@ -3,11 +3,14 @@ import MenuScreen from './screens/MenuScreen';
 import RulesScreen from './screens/RulesScreen';
 import TestScreen from './screens/TestScreen';
 import ChaptersScreen from './screens/ChaptersScreen';
+import LevelSelectScreen from './screens/LevelSelectScreen';
 
-export type Screen = 'menu' | 'rules' | 'test' | 'chapters' | 'play';
+export type Screen = 'menu' | 'rules' | 'test' | 'chapters' | 'levelSelect' | 'play';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('menu');
+  const [currentChapter, setCurrentChapter] = useState(1);
+  const [currentLevel, setCurrentLevel] = useState(1);
 
   return (
     <div className="app">
@@ -17,17 +20,28 @@ function App() {
       {screen === 'chapters' && (
         <ChaptersScreen
           onBack={() => setScreen('menu')}
-          onSelectChapter={(_chapter) => {
-            // TODO: navigate to level select for this chapter
+          onSelectChapter={(ch) => {
+            setCurrentChapter(ch);
+            setScreen('levelSelect');
+          }}
+        />
+      )}
+      {screen === 'levelSelect' && (
+        <LevelSelectScreen
+          chapter={currentChapter}
+          onBack={() => setScreen('chapters')}
+          onSelectLevel={(lvl) => {
+            setCurrentLevel(lvl);
             setScreen('play');
           }}
         />
       )}
       {screen === 'play' && (
         <div className="placeholder">
-          <h2>Level coming soon</h2>
-          <button className="back-btn" onClick={() => setScreen('chapters')}>
-            ← Back to chapters
+          <h2>Chapter {currentChapter} – Level {currentLevel}</h2>
+          <p>Level content coming soon</p>
+          <button className="back-btn" onClick={() => setScreen('levelSelect')}>
+            ← Back to levels
           </button>
         </div>
       )}

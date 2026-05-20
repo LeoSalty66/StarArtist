@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DrawingCanvas from '../canvas/DrawingCanvas';
 import Toolbar from '../canvas/Toolbar';
 import SuccessOverlay from '../canvas/SuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze } from '../analyzer/analyzer';
-import type { Tool } from '../canvas/types';
+import type { Line, Tool } from '../canvas/types';
+import type { NormalizedLine } from '../levels/types';
 
 interface Props {
   onBack: () => void;
@@ -13,14 +14,16 @@ interface Props {
 function TestScreen({ onBack }: Props) {
   const [tool, setTool] = useState<Tool>('pen');
   const [boilActive, setBoilActive] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
   const drawing = useDrawingState();
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Run the analyzer every time lines change.
   const analysis = useMemo(() => analyze(drawing.lines), [drawing.lines]);
 
   const locked = analysis.isValidStar;
 
-  // Activate line boil after the fill animation finishes (~2.3s after success)
+  // Activate line boil after the fill animation finishes
   useEffect(() => {
     if (locked) {
       const timer = setTimeout(() => setBoilActive(true), 2400);
@@ -29,6 +32,37 @@ function TestScreen({ onBack }: Props) {
       setBoilActive(false);
     }
   }, [locked]);
+
+  const handleExport = useCallback(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper || drawing.lines.length === 0) return;
+    const rect = wrapper.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (w === 0 || h === 0) return;
+
+    const normalized: NormalizedLine[] = drawing.lines.map((l: Line) => ({
+      ax: +(l.a.x / w).toFixed(4),
+      ay: +(l.a.y / h).toFixed(4),
+      bx: +(l.b.x / w).toFixed(4),
+      by: +(l.b.y / h).toFixed(4),
+    }));
+
+    const levelJson = JSON.stringify(
+      {
+        id: 'TODO',
+        givenLines: normalized,
+        lineBudget: 5,
+      },
+      null,
+      2,
+    );
+
+    navigator.clipboard.writeText(levelJson).then(() => {
+      setExportMessage('Copied to clipboard!');
+      setTimeout(() => setExportMessage(''), 2000);
+    });
+  }, [drawing.lines]);
 
   return (
     <div className="screen">
@@ -40,7 +74,7 @@ function TestScreen({ onBack }: Props) {
         <span className="header-hint">
           {locked
             ? '⭐ Star complete!'
-            : 'Draw a 5-pointed star. Press & drag to draw lines.'}
+            : exportMessage || 'Draw a 5-pointed star. Press & drag to draw lines.'}
         </span>
       </header>
       {!locked && (
@@ -53,9 +87,10 @@ function TestScreen({ onBack }: Props) {
           canUndo={drawing.canUndo}
           canRedo={drawing.canRedo}
           lineCount={drawing.lines.length}
+          onExport={handleExport}
         />
       )}
-      <div className="canvas-wrapper">
+      <div className="canvas-wrapper" ref={wrapperRef}>
         <DrawingCanvas
           tool={locked ? 'pen' : tool}
           lines={drawing.lines}

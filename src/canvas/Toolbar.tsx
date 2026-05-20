@@ -9,6 +9,7 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   lineCount: number;
+  onExport?: () => void;
 }
 
 function Toolbar({
@@ -20,6 +21,7 @@ function Toolbar({
   canUndo,
   canRedo,
   lineCount,
+  onExport,
 }: Props) {
   return (
     <div className="toolbar">
@@ -73,6 +75,19 @@ function Toolbar({
           🗑 Clear
         </button>
       </div>
+
+      {onExport && (
+        <div className="toolbar-group">
+          <button
+            className="tool-btn"
+            onClick={onExport}
+            disabled={lineCount === 0}
+            title="Export lines as level JSON (copies to clipboard)"
+          >
+            📋 Export
+          </button>
+        </div>
+      )}
 
       <div className="toolbar-info">
         {lineCount} {lineCount === 1 ? 'line' : 'lines'}
