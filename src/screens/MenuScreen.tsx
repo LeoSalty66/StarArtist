@@ -1,4 +1,5 @@
 import type { Screen } from '../App';
+import NightSky from '../components/NightSky';
 
 interface Props {
   onNavigate: (screen: Screen) => void;
@@ -7,6 +8,7 @@ interface Props {
 function MenuScreen({ onNavigate }: Props) {
   return (
     <div className="menu-screen">
+      <NightSky />
       <h1 className="title">StarArtist</h1>
       <p className="tagline">Make weird 5-pointed stars.</p>
       <div className="menu-buttons">

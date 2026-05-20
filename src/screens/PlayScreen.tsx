@@ -4,6 +4,7 @@ import Toolbar from '../canvas/Toolbar';
 import SuccessOverlay from '../canvas/SuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze } from '../analyzer/analyzer';
+import { saveStar } from '../storage/starLibrary';
 import type { Line, Tool } from '../canvas/types';
 import type { LevelData, NormalizedLine } from '../levels/types';
 
@@ -97,11 +98,13 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onNextLevel }: Prop
   useEffect(() => {
     if (locked) {
       const timer = setTimeout(() => setBoilActive(true), 2400);
+      // Save the star to the night sky library.
+      saveStar(level.id, allLines);
       return () => clearTimeout(timer);
     } else {
       setBoilActive(false);
     }
-  }, [locked]);
+  }, [locked, level.id, allLines]);
 
   return (
     <div className="screen">
