@@ -144,7 +144,6 @@ function PlayScreen({ level, onBack, onComplete }: Props) {
           />
         )}
       </div>
-      </div>
       {/* Analyzer feedback bar */}
       <div className={`analyzer-bar ${locked ? 'success' : ''}`}>
         <span className="analyzer-message">{analysis.message}</span>
