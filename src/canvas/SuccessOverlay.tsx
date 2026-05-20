@@ -10,18 +10,20 @@ interface Props {
 }
 
 /**
- * SVG overlay that animates the star fill-in on success.
- * Pentagon fills first, then the five triangles sequentially.
+ * SVG overlay that animates the star fill-in on success,
+ * then applies a line boil wobble effect to the completed star.
  */
 function SuccessOverlay({ graph, pentagon, triangles }: Props) {
-  const [step, setStep] = useState(0); // 0..5: which shapes are filled
+  const [step, setStep] = useState(0); // 0..6: fill animation steps
+  const [boilActive, setBoilActive] = useState(false);
 
   useEffect(() => {
-    // Animate: fill one shape every 350ms
     const timer = setInterval(() => {
       setStep((s) => {
         if (s >= 6) {
           clearInterval(timer);
+          // Start line boil shortly after fill completes
+          setTimeout(() => setBoilActive(true), 200);
           return s;
         }
         return s + 1;
@@ -40,7 +42,59 @@ function SuccessOverlay({ graph, pentagon, triangles }: Props) {
   };
 
   return (
-    <g className="success-overlay">
+    <g className={`success-overlay ${boilActive ? 'boil-active' : ''}`}>
+      {/* SVG filters for line boil: 3 displacement maps with different seeds */}
+      <defs>
+        <filter id="boil-1" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.04"
+            numOctaves="3"
+            seed="1"
+            result="noise"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="noise"
+            scale="2.5"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+        <filter id="boil-2" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.04"
+            numOctaves="3"
+            seed="42"
+            result="noise"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="noise"
+            scale="2.5"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+        <filter id="boil-3" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.04"
+            numOctaves="3"
+            seed="99"
+            result="noise"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="noise"
+            scale="2.5"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+      </defs>
+
       {/* Pentagon */}
       {step >= 1 && (
         <polygon

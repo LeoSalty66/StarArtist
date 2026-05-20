@@ -335,3 +335,31 @@ body {
 .drawing-canvas .line-group line[stroke="#f0f0f0"] {
   transition: stroke 0.3s ease;
 }
+
+/* ---------- Line boil wobble effect ---------- */
+
+.drawing-canvas.boil-active .line-group {
+  animation: lineBoil 0.25s steps(1) infinite;
+}
+
+.drawing-canvas.boil-active .success-overlay {
+  animation: lineBoil 0.25s steps(1) infinite;
+  animation-delay: 0.08s;
+}
+
+@keyframes lineBoil {
+  0% {
+    filter: url(#boil-1);
+  }
+  33.33% {
+    filter: url(#boil-2);
+  }
+  66.66% {
+    filter: url(#boil-3);
+  }
+}
+
+/* Subtle glow on lines during success */
+.drawing-canvas.boil-active .line-group line[stroke="#f0f0f0"] {
+  stroke: #ffe8a0;
+}

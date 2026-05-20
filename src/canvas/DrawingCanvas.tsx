@@ -8,6 +8,7 @@ interface Props {
   onAddLine: (line: Line) => void;
   onRemoveLine: (id: string) => void;
   locked?: boolean;
+  boilActive?: boolean;
   successOverlay?: React.ReactNode;
 }
 
@@ -22,7 +23,7 @@ const MIN_LINE_LENGTH = 4;
  * Snap behavior: while drawing or hovering, the cursor magnetizes to nearby
  * endpoints, intersections, or line bodies (in that priority).
  */
-function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine, locked, successOverlay }: Props) {
+function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine, locked, boilActive, successOverlay }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
@@ -114,7 +115,7 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine, locked, successOv
   return (
     <svg
       ref={svgRef}
-      className={`drawing-canvas tool-${tool}`}
+      className={`drawing-canvas tool-${tool}${boilActive ? ' boil-active' : ''}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DrawingCanvas from '../canvas/DrawingCanvas';
 import Toolbar from '../canvas/Toolbar';
 import SuccessOverlay from '../canvas/SuccessOverlay';
@@ -12,12 +12,23 @@ interface Props {
 
 function TestScreen({ onBack }: Props) {
   const [tool, setTool] = useState<Tool>('pen');
+  const [boilActive, setBoilActive] = useState(false);
   const drawing = useDrawingState();
 
   // Run the analyzer every time lines change.
   const analysis = useMemo(() => analyze(drawing.lines), [drawing.lines]);
 
   const locked = analysis.isValidStar;
+
+  // Activate line boil after the fill animation finishes (~2.3s after success)
+  useEffect(() => {
+    if (locked) {
+      const timer = setTimeout(() => setBoilActive(true), 2400);
+      return () => clearTimeout(timer);
+    } else {
+      setBoilActive(false);
+    }
+  }, [locked]);
 
   return (
     <div className="screen">
@@ -51,6 +62,7 @@ function TestScreen({ onBack }: Props) {
           onAddLine={drawing.addLine}
           onRemoveLine={drawing.removeLine}
           locked={locked}
+          boilActive={boilActive}
           successOverlay={
             analysis.isValidStar &&
             analysis.pentagonIdx !== null ? (
