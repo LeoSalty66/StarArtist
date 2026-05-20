@@ -1,8 +1,17 @@
+import { useState } from 'react';
+import DrawingCanvas from '../canvas/DrawingCanvas';
+import Toolbar from '../canvas/Toolbar';
+import { useDrawingState } from '../canvas/useDrawingState';
+import type { Tool } from '../canvas/types';
+
 interface Props {
   onBack: () => void;
 }
 
 function TestScreen({ onBack }: Props) {
+  const [tool, setTool] = useState<Tool>('pen');
+  const drawing = useDrawingState();
+
   return (
     <div className="screen">
       <header className="screen-header">
@@ -10,11 +19,27 @@ function TestScreen({ onBack }: Props) {
           ← Back
         </button>
         <h2>Test</h2>
+        <span className="header-hint">
+          Click two points to draw a line. Right-click or Esc to break the chain.
+        </span>
       </header>
-      <div className="screen-body">
-        <p className="placeholder-text">
-          Development sandbox. The canvas and shape analyzer will live here.
-        </p>
+      <Toolbar
+        tool={tool}
+        onToolChange={setTool}
+        onUndo={drawing.undo}
+        onRedo={drawing.redo}
+        onClear={drawing.clear}
+        canUndo={drawing.canUndo}
+        canRedo={drawing.canRedo}
+        lineCount={drawing.lines.length}
+      />
+      <div className="canvas-wrapper">
+        <DrawingCanvas
+          tool={tool}
+          lines={drawing.lines}
+          onAddLine={drawing.addLine}
+          onRemoveLine={drawing.removeLine}
+        />
       </div>
     </div>
   );
