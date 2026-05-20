@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { Line, Point } from './types';
+import { mergeOverlappingLines } from './mergeLines';
 
 /**
  * Drawing state with undo/redo via history stacks.
@@ -8,6 +9,7 @@ import type { Line, Point } from './types';
  * `past` and `future` are the undo/redo stacks of previous `lines` snapshots.
  *
  * Any mutation pushes the previous state to `past` and clears `future`.
+ * After each mutation, overlapping/parallel lines are automatically merged.
  */
 export function useDrawingState() {
   const [lines, setLines] = useState<Line[]>([]);
@@ -15,9 +17,10 @@ export function useDrawingState() {
   const [future, setFuture] = useState<Line[][]>([]);
 
   const commit = useCallback((next: Line[]) => {
+    const merged = mergeOverlappingLines(next);
     setPast((p) => [...p, lines]);
     setFuture([]);
-    setLines(next);
+    setLines(merged);
   }, [lines]);
 
   const addLine = useCallback((line: Line) => {
