@@ -56,7 +56,7 @@ function SuccessOverlay({ graph, pentagon, triangles }: Props) {
           <feDisplacementMap
             in="SourceGraphic"
             in2="noise"
-            scale="2.5"
+            scale="5"
             xChannelSelector="R"
             yChannelSelector="G"
           />
@@ -72,7 +72,7 @@ function SuccessOverlay({ graph, pentagon, triangles }: Props) {
           <feDisplacementMap
             in="SourceGraphic"
             in2="noise"
-            scale="2.5"
+            scale="5"
             xChannelSelector="R"
             yChannelSelector="G"
           />
@@ -88,7 +88,7 @@ function SuccessOverlay({ graph, pentagon, triangles }: Props) {
           <feDisplacementMap
             in="SourceGraphic"
             in2="noise"
-            scale="2.5"
+            scale="5"
             xChannelSelector="R"
             yChannelSelector="G"
           />

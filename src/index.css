@@ -11,8 +11,8 @@ body,
 
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background: #1a1a2e;
-  color: #f0f0f0;
+  background: #0a0e1a;
+  color: #e0e8f0;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -38,7 +38,7 @@ body {
   font-size: 4rem;
   margin: 0 0 0.25rem 0;
   letter-spacing: 0.05em;
-  background: linear-gradient(135deg, #ffd166, #ef476f);
+  background: linear-gradient(135deg, #7ec8e3, #b088f9);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -62,17 +62,17 @@ body {
   padding: 0.9rem 1.5rem;
   font-size: 1.1rem;
   font-weight: 500;
-  border: 2px solid #f0f0f0;
+  border: 2px solid rgba(126, 200, 227, 0.5);
   border-radius: 12px;
   background: transparent;
-  color: #f0f0f0;
+  color: #e0e8f0;
   cursor: pointer;
   transition: transform 0.1s ease, background-color 0.15s ease;
   font-family: inherit;
 }
 
 .menu-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(126, 200, 227, 0.08);
 }
 
 .menu-btn:active {
@@ -80,13 +80,13 @@ body {
 }
 
 .menu-btn.primary {
-  background: linear-gradient(135deg, #ffd166, #ef476f);
+  background: linear-gradient(135deg, #7ec8e3, #b088f9);
   border-color: transparent;
-  color: #1a1a2e;
+  color: #0a0e1a;
 }
 
 .menu-btn.primary:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.1);
 }
 
 /* ---------- Generic screen layout (Rules, Test, etc.) ---------- */
@@ -103,7 +103,7 @@ body {
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(126, 200, 227, 0.15);
 }
 
 .screen-header h2 {
@@ -114,17 +114,17 @@ body {
 .back-btn {
   padding: 0.5rem 0.9rem;
   font-size: 0.95rem;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(126, 200, 227, 0.3);
   border-radius: 8px;
   background: transparent;
-  color: #f0f0f0;
+  color: #e0e8f0;
   cursor: pointer;
   font-family: inherit;
   transition: background-color 0.15s ease;
 }
 
 .back-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(126, 200, 227, 0.1);
 }
 
 .screen-body {
@@ -145,7 +145,7 @@ body {
 
 .rules-section h3 {
   margin: 0 0 0.5rem 0;
-  color: #ffd166;
+  color: #7ec8e3;
 }
 
 .rules-section ul {
@@ -188,8 +188,8 @@ body {
   align-items: center;
   gap: 1.5rem;
   padding: 0.75rem 1.5rem;
-  background: #232340;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0f1525;
+  border-bottom: 1px solid rgba(126, 200, 227, 0.12);
   flex-wrap: wrap;
 }
 
@@ -207,17 +207,17 @@ body {
 .tool-btn {
   padding: 0.5rem 0.9rem;
   font-size: 0.95rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(126, 200, 227, 0.2);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #f0f0f0;
+  background: rgba(126, 200, 227, 0.04);
+  color: #e0e8f0;
   cursor: pointer;
   font-family: inherit;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .tool-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(126, 200, 227, 0.1);
 }
 
 .tool-btn:disabled {
@@ -226,15 +226,15 @@ body {
 }
 
 .tool-btn.active {
-  background: linear-gradient(135deg, #ffd166, #ef476f);
+  background: linear-gradient(135deg, #7ec8e3, #b088f9);
   border-color: transparent;
-  color: #1a1a2e;
+  color: #0a0e1a;
   font-weight: 600;
 }
 
 .tool-btn.danger:hover:not(:disabled) {
-  background: rgba(239, 71, 111, 0.2);
-  border-color: #ef476f;
+  background: rgba(200, 80, 100, 0.2);
+  border-color: #c85064;
 }
 
 /* ---------- Drawing canvas ---------- */
@@ -242,7 +242,7 @@ body {
 .canvas-wrapper {
   flex: 1;
   display: flex;
-  background: #0e0e1a;
+  background: #060a14;
   position: relative;
   overflow: hidden;
 }
@@ -252,9 +252,9 @@ body {
   width: 100%;
   height: 100%;
   background:
-    radial-gradient(circle at 20% 20%, rgba(255, 209, 102, 0.05), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(239, 71, 111, 0.05), transparent 40%),
-    #0e0e1a;
+    radial-gradient(circle at 20% 20%, rgba(126, 200, 227, 0.04), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(176, 136, 249, 0.04), transparent 40%),
+    #060a14;
   user-select: none;
 }
 
@@ -267,7 +267,7 @@ body {
 }
 
 .line-group:hover line[stroke="transparent"] + line {
-  stroke: #ef476f;
+  stroke: #c85064;
 }
 
 /* ---------- Analyzer feedback bar ---------- */
@@ -277,15 +277,15 @@ body {
   align-items: center;
   gap: 1rem;
   padding: 0.6rem 1.5rem;
-  background: #232340;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0f1525;
+  border-top: 1px solid rgba(126, 200, 227, 0.12);
   font-size: 0.9rem;
   flex-wrap: wrap;
 }
 
 .analyzer-bar.success {
-  background: linear-gradient(135deg, rgba(255, 209, 102, 0.15), rgba(239, 71, 111, 0.15));
-  border-top-color: #ffd166;
+  background: linear-gradient(135deg, rgba(126, 200, 227, 0.12), rgba(176, 136, 249, 0.12));
+  border-top-color: #7ec8e3;
 }
 
 .analyzer-message {
@@ -298,7 +298,7 @@ body {
 
 .shape-badge {
   display: inline-block;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(126, 200, 227, 0.1);
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
   margin-right: 0.25rem;
@@ -313,11 +313,11 @@ body {
 }
 
 .fill-pentagon {
-  fill: rgba(255, 209, 102, 0.35);
+  fill: rgba(126, 200, 227, 0.3);
 }
 
 .fill-triangle {
-  fill: rgba(239, 71, 111, 0.25);
+  fill: rgba(176, 136, 249, 0.2);
 }
 
 @keyframes fillIn {
@@ -339,12 +339,12 @@ body {
 /* ---------- Line boil wobble effect ---------- */
 
 .drawing-canvas.boil-active .line-group {
-  animation: lineBoil 0.25s steps(1) infinite;
+  animation: lineBoil 0.5s steps(1) infinite;
 }
 
 .drawing-canvas.boil-active .success-overlay {
-  animation: lineBoil 0.25s steps(1) infinite;
-  animation-delay: 0.08s;
+  animation: lineBoil 0.5s steps(1) infinite;
+  animation-delay: 0.16s;
 }
 
 @keyframes lineBoil {
@@ -361,5 +361,5 @@ body {
 
 /* Subtle glow on lines during success */
 .drawing-canvas.boil-active .line-group line[stroke="#f0f0f0"] {
-  stroke: #ffe8a0;
+  stroke: #a8d8ea;
 }

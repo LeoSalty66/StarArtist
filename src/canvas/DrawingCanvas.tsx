@@ -163,7 +163,7 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine, locked, boilActiv
           y1={startPoint.y}
           x2={cursor.x}
           y2={cursor.y}
-          stroke="#ffd166"
+          stroke="#7ec8e3"
           strokeWidth={2}
           strokeDasharray="6 6"
           strokeLinecap="round"
@@ -179,7 +179,7 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine, locked, boilActiv
             cy={snap.point.y}
             r={7}
             fill="none"
-            stroke="#a0a0c0"
+            stroke="#6b8fa8"
             strokeWidth={2}
           />
         </g>
@@ -191,7 +191,7 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine, locked, boilActiv
           cx={startPoint.x}
           cy={startPoint.y}
           r={4}
-          fill="#ffd166"
+          fill="#7ec8e3"
           pointerEvents="none"
         />
       )}
