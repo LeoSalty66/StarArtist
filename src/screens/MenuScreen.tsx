@@ -10,8 +10,8 @@ function MenuScreen({ onNavigate }: Props) {
       <h1 className="title">StarArtist</h1>
       <p className="tagline">Make weird 5-pointed stars.</p>
       <div className="menu-buttons">
-        <button className="menu-btn primary" onClick={() => onNavigate('play')}>
-          Start
+        <button className="menu-btn primary" onClick={() => onNavigate('chapters')}>
+          Story Mode
         </button>
         <button className="menu-btn" onClick={() => onNavigate('rules')}>
           Rules

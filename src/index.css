@@ -363,3 +363,49 @@ body {
 .drawing-canvas.boil-active .line-group line[stroke="#f0f0f0"] {
   stroke: #a8d8ea;
 }
+
+
+/* ---------- Chapters screen ---------- */
+
+.chapters-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.chapter-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1.2rem 1.5rem;
+  border: 1px solid rgba(126, 200, 227, 0.25);
+  border-radius: 12px;
+  background: rgba(126, 200, 227, 0.04);
+  color: #e0e8f0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.chapter-btn:hover {
+  background: rgba(126, 200, 227, 0.1);
+  border-color: rgba(126, 200, 227, 0.4);
+}
+
+.chapter-btn:active {
+  transform: scale(0.98);
+}
+
+.chapter-number {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.chapter-subtitle {
+  font-size: 0.9rem;
+  opacity: 0.6;
+  margin-top: 0.2rem;
+}
