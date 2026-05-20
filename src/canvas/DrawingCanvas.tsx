@@ -7,6 +7,8 @@ interface Props {
   lines: Line[];
   onAddLine: (line: Line) => void;
   onRemoveLine: (id: string) => void;
+  locked?: boolean;
+  successOverlay?: React.ReactNode;
 }
 
 const MIN_LINE_LENGTH = 4;
@@ -20,7 +22,7 @@ const MIN_LINE_LENGTH = 4;
  * Snap behavior: while drawing or hovering, the cursor magnetizes to nearby
  * endpoints, intersections, or line bodies (in that priority).
  */
-function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
+function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine, locked, successOverlay }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
@@ -54,6 +56,7 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
   };
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (locked) return;
     if (tool !== 'pen') return;
     if (e.button !== 0) return; // left button only
     const raw = getSvgPoint(e.clientX, e.clientY);
@@ -74,6 +77,7 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
   };
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (locked) return;
     if (tool !== 'pen' || !startPoint) {
       setStartPoint(null);
       return;
@@ -190,6 +194,9 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
           pointerEvents="none"
         />
       )}
+
+      {/* Success fill overlay */}
+      {successOverlay}
     </svg>
   );
 }

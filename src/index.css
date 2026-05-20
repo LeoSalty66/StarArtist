@@ -269,3 +269,69 @@ body {
 .line-group:hover line[stroke="transparent"] + line {
   stroke: #ef476f;
 }
+
+/* ---------- Analyzer feedback bar ---------- */
+
+.analyzer-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.5rem;
+  background: #232340;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.analyzer-bar.success {
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.15), rgba(239, 71, 111, 0.15));
+  border-top-color: #ffd166;
+}
+
+.analyzer-message {
+  font-weight: 500;
+}
+
+.analyzer-detail {
+  opacity: 0.7;
+}
+
+.shape-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-right: 0.25rem;
+  font-size: 0.8rem;
+}
+
+/* ---------- Success overlay fills ---------- */
+
+.success-overlay polygon {
+  opacity: 0;
+  animation: fillIn 0.4s ease forwards;
+}
+
+.fill-pentagon {
+  fill: rgba(255, 209, 102, 0.35);
+}
+
+.fill-triangle {
+  fill: rgba(239, 71, 111, 0.25);
+}
+
+@keyframes fillIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* On success, change line colors */
+.drawing-canvas .line-group line[stroke="#f0f0f0"] {
+  transition: stroke 0.3s ease;
+}
