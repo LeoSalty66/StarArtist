@@ -53,10 +53,15 @@ function App() {
           key={levelData.id}
           level={levelData}
           onBack={() => setScreen('levelSelect')}
-          onComplete={() => {
-            // For now just stay on the success screen.
-            // Later: auto-advance, save progress, etc.
-          }}
+          onComplete={() => {}}
+          onMainMenu={() => setScreen('menu')}
+          onNextLevel={
+            currentChapter === 1 && currentLevel < chapter1.length
+              ? () => {
+                  setCurrentLevel(currentLevel + 1);
+                }
+              : null
+          }
         />
       )}
     </div>

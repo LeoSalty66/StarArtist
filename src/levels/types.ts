@@ -13,6 +13,11 @@ export interface LevelData {
   givenLines: NormalizedLine[];
   /** Maximum number of lines the player can add. */
   lineBudget: number;
+  /**
+   * Aspect ratio (width/height) of the canvas the level was authored on.
+   * Used to correct coordinate distortion. Defaults to 1 (square).
+   */
+  sourceAspect?: number;
 }
 
 export interface NormalizedLine {

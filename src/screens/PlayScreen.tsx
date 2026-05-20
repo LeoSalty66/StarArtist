@@ -11,33 +11,42 @@ interface Props {
   level: LevelData;
   onBack: () => void;
   onComplete: () => void;
+  onMainMenu: () => void;
+  onNextLevel: (() => void) | null; // null if no next level
 }
 
-/** Convert normalized lines to pixel lines, centered and scaled to fit the canvas with padding. */
+/** Convert normalized lines to pixel lines, centered and scaled to fit the canvas uniformly. */
 function denormalize(nl: NormalizedLine[], w: number, h: number): Line[] {
   if (nl.length === 0) return [];
 
-  // Find bounding box of all points in normalized space.
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  // Collect all points.
+  const xs: number[] = [];
+  const ys: number[] = [];
   for (const n of nl) {
-    minX = Math.min(minX, n.ax, n.bx);
-    minY = Math.min(minY, n.ay, n.by);
-    maxX = Math.max(maxX, n.ax, n.bx);
-    maxY = Math.max(maxY, n.ay, n.by);
+    xs.push(n.ax, n.bx);
+    ys.push(n.ay, n.by);
   }
 
-  const bboxW = maxX - minX || 0.01;
-  const bboxH = maxY - minY || 0.01;
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
 
-  // Scale to fit within 80% of the canvas (10% padding each side).
+  const bboxW = maxX - minX || 0.001;
+  const bboxH = maxY - minY || 0.001;
+
+  // Use a UNIFORM scale to avoid distortion.
+  // Fit within 80% of the canvas (10% padding on each side).
   const padding = 0.1;
   const availW = w * (1 - 2 * padding);
   const availH = h * (1 - 2 * padding);
   const scale = Math.min(availW / bboxW, availH / bboxH);
 
-  // Center offset.
-  const offsetX = (w - bboxW * scale) / 2;
-  const offsetY = (h - bboxH * scale) / 2;
+  // Center the result.
+  const scaledW = bboxW * scale;
+  const scaledH = bboxH * scale;
+  const offsetX = (w - scaledW) / 2;
+  const offsetY = (h - scaledH) / 2;
 
   const transform = (nx: number, ny: number) => ({
     x: (nx - minX) * scale + offsetX,
@@ -51,7 +60,7 @@ function denormalize(nl: NormalizedLine[], w: number, h: number): Line[] {
   }));
 }
 
-function PlayScreen({ level, onBack, onComplete }: Props) {
+function PlayScreen({ level, onBack, onComplete, onMainMenu, onNextLevel }: Props) {
   const [tool, setTool] = useState<Tool>('pen');
   const [boilActive, setBoilActive] = useState(false);
   const [canvasSize, setCanvasSize] = useState<{ w: number; h: number } | null>(null);
@@ -111,14 +120,6 @@ function PlayScreen({ level, onBack, onComplete }: Props) {
       setBoilActive(false);
     }
   }, [locked]);
-
-  // Notify parent on success (after animation).
-  useEffect(() => {
-    if (locked) {
-      const timer = setTimeout(() => onComplete(), 3500);
-      return () => clearTimeout(timer);
-    }
-  }, [locked, onComplete]);
 
   return (
     <div className="screen">
@@ -180,6 +181,18 @@ function PlayScreen({ level, onBack, onComplete }: Props) {
       {/* Analyzer feedback bar */}
       <div className={`analyzer-bar ${locked ? 'success' : ''}`}>
         <span className="analyzer-message">{analysis.message}</span>
+        {locked && (
+          <div className="success-actions">
+            {onNextLevel && (
+              <button className="menu-btn primary small" onClick={onNextLevel}>
+                Next Level →
+              </button>
+            )}
+            <button className="menu-btn small" onClick={onMainMenu}>
+              Main Menu
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

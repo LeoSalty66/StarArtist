@@ -487,3 +487,18 @@ body {
   cursor: not-allowed;
   font-size: 1rem;
 }
+
+
+/* ---------- Success actions ---------- */
+
+.success-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.menu-btn.small {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border-radius: 8px;
+}
