@@ -520,21 +520,14 @@ body {
   opacity: 0.9;
 }
 
-.sky-star-lines {
-  animation: skyBoil 0.6s steps(1) infinite;
+.sky-line {
+  animation: skyLineBoil 0.5s steps(1) infinite;
 }
 
-.sky-star:nth-child(3n) .sky-star-lines {
-  animation-delay: -0.2s;
-}
-.sky-star:nth-child(3n+1) .sky-star-lines {
-  animation-delay: -0.4s;
-}
-
-@keyframes skyBoil {
-  0% { filter: url(#sky-boil-1-0); transform: translate(0.003px, 0); }
-  33.33% { filter: url(#sky-boil-2-0); transform: translate(-0.002px, 0.002px); }
-  66.66% { filter: url(#sky-boil-3-0); transform: translate(0.001px, -0.003px); }
+@keyframes skyLineBoil {
+  0% { filter: var(--f1); }
+  33.33% { filter: var(--f2); }
+  66.66% { filter: var(--f3); }
 }
 
 /* Keep menu content above the sky */

@@ -3,7 +3,7 @@ import { loadStars, type SavedStar } from '../storage/starLibrary';
 
 /**
  * Renders saved stars as tiny SVG drawings scattered across the background
- * with line boil wobble effect.
+ * with per-line wobble effect.
  */
 function NightSky() {
   const [stars, setStars] = useState<SavedStar[]>([]);
@@ -33,36 +33,45 @@ function NightSky() {
             viewBox="0 0 1 1"
             width={sizeBase}
             height={sizeBase}
-            className="sky-star-svg"
           >
             <defs>
-              <filter id={`sky-boil-1-${i}`} x="-10%" y="-10%" width="120%" height="120%">
-                <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed={i * 3 + 1} result="n" />
-                <feDisplacementMap in="SourceGraphic" in2="n" scale="0.015" xChannelSelector="R" yChannelSelector="G" />
-              </filter>
-              <filter id={`sky-boil-2-${i}`} x="-10%" y="-10%" width="120%" height="120%">
-                <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed={i * 3 + 2} result="n" />
-                <feDisplacementMap in="SourceGraphic" in2="n" scale="0.015" xChannelSelector="R" yChannelSelector="G" />
-              </filter>
-              <filter id={`sky-boil-3-${i}`} x="-10%" y="-10%" width="120%" height="120%">
-                <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed={i * 3 + 3} result="n" />
-                <feDisplacementMap in="SourceGraphic" in2="n" scale="0.015" xChannelSelector="R" yChannelSelector="G" />
-              </filter>
-            </defs>
-            <g className="sky-star-lines" style={{ '--boil-idx': i } as React.CSSProperties}>
-              {star.lines.map((l, j) => (
-                <line
-                  key={j}
-                  x1={l.ax}
-                  y1={l.ay}
-                  x2={l.bx}
-                  y2={l.by}
-                  stroke="rgba(180, 220, 240, 0.9)"
-                  strokeWidth={0.025}
-                  strokeLinecap="round"
-                />
+              {/* Each line gets its own set of 3 filters for independent wobble */}
+              {star.lines.map((_, j) => (
+                <g key={j}>
+                  <filter id={`sb-${i}-${j}-1`} x="-15%" y="-15%" width="130%" height="130%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 1} result="n" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.012" xChannelSelector="R" yChannelSelector="G" />
+                  </filter>
+                  <filter id={`sb-${i}-${j}-2`} x="-15%" y="-15%" width="130%" height="130%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 2} result="n" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.012" xChannelSelector="R" yChannelSelector="G" />
+                  </filter>
+                  <filter id={`sb-${i}-${j}-3`} x="-15%" y="-15%" width="130%" height="130%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 3} result="n" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.012" xChannelSelector="R" yChannelSelector="G" />
+                  </filter>
+                </g>
               ))}
-            </g>
+            </defs>
+            {star.lines.map((l, j) => (
+              <line
+                key={j}
+                x1={l.ax}
+                y1={l.ay}
+                x2={l.bx}
+                y2={l.by}
+                stroke="rgba(180, 220, 240, 0.9)"
+                strokeWidth={0.025}
+                strokeLinecap="round"
+                className="sky-line"
+                style={{
+                  animationDelay: `${-(j * 0.15)}s`,
+                  '--f1': `url(#sb-${i}-${j}-1)`,
+                  '--f2': `url(#sb-${i}-${j}-2)`,
+                  '--f3': `url(#sb-${i}-${j}-3)`,
+                } as React.CSSProperties}
+              />
+            ))}
           </svg>
         </div>
       ))}
