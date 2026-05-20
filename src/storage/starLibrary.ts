@@ -69,3 +69,9 @@ export function saveStar(levelId: string, lines: Line[]): void {
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
 }
+
+
+/** Clear all saved stars from localStorage. */
+export function clearStars(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}

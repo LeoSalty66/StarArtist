@@ -4,6 +4,7 @@ import Toolbar from '../canvas/Toolbar';
 import SuccessOverlay from '../canvas/SuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze } from '../analyzer/analyzer';
+import { clearStars } from '../storage/starLibrary';
 import type { Line, Tool } from '../canvas/types';
 import type { NormalizedLine } from '../levels/types';
 
@@ -71,6 +72,13 @@ function TestScreen({ onBack }: Props) {
           ← Back
         </button>
         <h2>Test</h2>
+        <button
+          className="tool-btn danger"
+          onClick={() => { clearStars(); setExportMessage('Stars cleared!'); setTimeout(() => setExportMessage(''), 2000); }}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Clear Stars
+        </button>
         <span className="header-hint">
           {locked
             ? '⭐ Star complete!'
