@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Line, Point, Tool } from './types';
+import { findSnap, type SnapTarget } from './geometry';
 
 interface Props {
   tool: Tool;
@@ -8,26 +9,29 @@ interface Props {
   onRemoveLine: (id: string) => void;
 }
 
+const MIN_LINE_LENGTH = 4;
+
 /**
- * Two-click line drawing on an SVG canvas.
+ * Press-and-drag line drawing on an SVG canvas.
  *
- * Pen: first click sets the start point. Second click commits the line
- * and the end point becomes the new start (chain mode). Escape or
- * right-click cancels the in-progress chain.
- *
+ * Pen: press to start, drag to set endpoint, release to commit.
  * Eraser: click a line to remove it.
+ *
+ * Snap behavior: while drawing or hovering, the cursor magnetizes to nearby
+ * endpoints, intersections, or line bodies (in that priority).
  */
 function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
+  const [snap, setSnap] = useState<SnapTarget | null>(null);
 
-  // Cancel chain when switching tools
+  // Cancel in-progress line when switching tools
   useEffect(() => {
     setStartPoint(null);
   }, [tool]);
 
-  // Escape key cancels in-progress line
+  // Escape cancels in-progress line
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setStartPoint(null);
@@ -43,43 +47,62 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (tool !== 'pen') return;
-    const p = getSvgPoint(e.clientX, e.clientY);
-    if (!p) return;
-
-    if (!startPoint) {
-      setStartPoint(p);
-      return;
-    }
-
-    // Reject zero-length lines (double-click in place)
-    const dx = p.x - startPoint.x;
-    const dy = p.y - startPoint.y;
-    if (Math.hypot(dx, dy) < 4) return;
-
-    onAddLine({
-      id: crypto.randomUUID(),
-      a: startPoint,
-      b: p,
-    });
-    // Chain: end point becomes next start
-    setStartPoint(p);
+  /** Resolve the effective point given the raw cursor position and snap state. */
+  const resolvePoint = (raw: Point): { point: Point; snap: SnapTarget | null } => {
+    const target = findSnap(raw, lines);
+    return { point: target ? target.point : raw, snap: target };
   };
 
-  const handleContextMenu = (e: React.MouseEvent<SVGSVGElement>) => {
-    e.preventDefault();
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (tool !== 'pen') return;
+    if (e.button !== 0) return; // left button only
+    const raw = getSvgPoint(e.clientX, e.clientY);
+    if (!raw) return;
+    const { point } = resolvePoint(raw);
+    setStartPoint(point);
+    setCursor(point);
+    // Capture so we keep getting move/up events even off the SVG
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const raw = getSvgPoint(e.clientX, e.clientY);
+    if (!raw) return;
+    const { point, snap } = resolvePoint(raw);
+    setCursor(point);
+    setSnap(snap);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (tool !== 'pen' || !startPoint) {
+      setStartPoint(null);
+      return;
+    }
+    const raw = getSvgPoint(e.clientX, e.clientY);
+    const endRaw = raw ?? startPoint;
+    const { point: endPoint } = resolvePoint(endRaw);
+
+    const dx = endPoint.x - startPoint.x;
+    const dy = endPoint.y - startPoint.y;
+    if (Math.hypot(dx, dy) >= MIN_LINE_LENGTH) {
+      onAddLine({
+        id: crypto.randomUUID(),
+        a: startPoint,
+        b: endPoint,
+      });
+    }
     setStartPoint(null);
   };
 
-  const handleMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    setCursor(getSvgPoint(e.clientX, e.clientY));
+  const handlePointerLeave = () => {
+    setCursor(null);
+    setSnap(null);
   };
 
-  const handleLeave = () => setCursor(null);
-
-  const handleLineClick = (id: string) => {
-    if (tool === 'eraser') onRemoveLine(id);
+  const handleLineClick = (id: string, e: React.MouseEvent) => {
+    if (tool !== 'eraser') return;
+    e.stopPropagation();
+    onRemoveLine(id);
   };
 
   const showPreview = tool === 'pen' && startPoint && cursor;
@@ -88,43 +111,47 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
     <svg
       ref={svgRef}
       className={`drawing-canvas tool-${tool}`}
-      onClick={handleClick}
-      onContextMenu={handleContextMenu}
-      onMouseMove={handleMove}
-      onMouseLeave={handleLeave}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+      onContextMenu={(e) => e.preventDefault()}
     >
       {/* Committed lines */}
-      {lines.map((l) => (
-        <g key={l.id} className="line-group">
-          {/* Wide invisible hit area for easier eraser clicks */}
-          <line
-            x1={l.a.x}
-            y1={l.a.y}
-            x2={l.b.x}
-            y2={l.b.y}
-            stroke="transparent"
-            strokeWidth={16}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleLineClick(l.id);
-            }}
-            style={{ cursor: tool === 'eraser' ? 'pointer' : 'default' }}
-          />
-          {/* The actual visible line */}
-          <line
-            x1={l.a.x}
-            y1={l.a.y}
-            x2={l.b.x}
-            y2={l.b.y}
-            stroke="#f0f0f0"
-            strokeWidth={3}
-            strokeLinecap="round"
-            pointerEvents="none"
-          />
-        </g>
-      ))}
+      {lines.map((l) => {
+        // The hit area is wider for the eraser to make clicking easy.
+        // For the pen, we want the visible line itself to NOT block pointer
+        // events so the user can press/release on top of existing lines.
+        const eraserMode = tool === 'eraser';
+        return (
+          <g key={l.id} className="line-group">
+            {eraserMode && (
+              <line
+                x1={l.a.x}
+                y1={l.a.y}
+                x2={l.b.x}
+                y2={l.b.y}
+                stroke="transparent"
+                strokeWidth={18}
+                onClick={(e) => handleLineClick(l.id, e)}
+                style={{ cursor: 'pointer' }}
+              />
+            )}
+            <line
+              x1={l.a.x}
+              y1={l.a.y}
+              x2={l.b.x}
+              y2={l.b.y}
+              stroke="#f0f0f0"
+              strokeWidth={3}
+              strokeLinecap="round"
+              pointerEvents="none"
+            />
+          </g>
+        );
+      })}
 
-      {/* Preview line from startPoint to cursor */}
+      {/* Preview line while dragging */}
       {showPreview && (
         <line
           x1={startPoint.x}
@@ -139,12 +166,26 @@ function DrawingCanvas({ tool, lines, onAddLine, onRemoveLine }: Props) {
         />
       )}
 
-      {/* Anchor dot for the in-progress line start */}
-      {tool === 'pen' && startPoint && (
+      {/* Snap indicator */}
+      {snap && tool === 'pen' && (
+        <g pointerEvents="none">
+          <circle
+            cx={snap.point.x}
+            cy={snap.point.y}
+            r={7}
+            fill="none"
+            stroke="#a0a0c0"
+            strokeWidth={2}
+          />
+        </g>
+      )}
+
+      {/* Anchor for the in-progress line */}
+      {tool === 'pen' && startPoint && !snap && (
         <circle
           cx={startPoint.x}
           cy={startPoint.y}
-          r={5}
+          r={4}
           fill="#ffd166"
           pointerEvents="none"
         />
