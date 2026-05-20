@@ -253,11 +253,12 @@ body {
   flex: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: #0a0e1a;
   position: relative;
   overflow: hidden;
   padding: 1rem;
+  padding-left: 2rem;
 }
 
 .drawing-canvas {

@@ -63,31 +63,13 @@ function denormalize(nl: NormalizedLine[], w: number, h: number): Line[] {
 function PlayScreen({ level, onBack, onComplete, onMainMenu, onNextLevel }: Props) {
   const [tool, setTool] = useState<Tool>('pen');
   const [boilActive, setBoilActive] = useState(false);
-  const [canvasSize, setCanvasSize] = useState<{ w: number; h: number } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const drawing = useDrawingState();
 
-  // Measure the canvas on mount and resize.
-  useEffect(() => {
-    const measure = () => {
-      const el = wrapperRef.current;
-      if (!el) return;
-      // The SVG is square, constrained by min(width, height) of wrapper minus padding.
-      const rect = el.getBoundingClientRect();
-      const available = Math.min(rect.width, rect.height) - 32; // 1rem padding * 2
-      const size = Math.min(available, rect.height * 0.8);
-      setCanvasSize({ w: size > 0 ? size : rect.width, h: size > 0 ? size : rect.height });
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
-
-  // Given lines in pixel space.
+  // Given lines in pixel space (using fixed 600x600 viewBox coordinates).
   const givenLines = useMemo(() => {
-    if (!canvasSize) return [];
-    return denormalize(level.givenLines, canvasSize.w, canvasSize.h);
-  }, [level.givenLines, canvasSize]);
+    return denormalize(level.givenLines, 600, 600);
+  }, [level.givenLines]);
 
   // All lines: given + player-drawn.
   const allLines = useMemo(
@@ -136,7 +118,6 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onNextLevel }: Prop
       </header>
       <div className="canvas-area">
         <div className="canvas-wrapper" ref={wrapperRef}>
-          {canvasSize && (
             <DrawingCanvas
               tool={locked ? 'pen' : atBudget && tool === 'pen' ? 'pen' : tool}
               lines={allLines}
@@ -163,7 +144,6 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onNextLevel }: Prop
                 ) : undefined
               }
             />
-          )}
         </div>
         {!locked && (
           <Toolbar

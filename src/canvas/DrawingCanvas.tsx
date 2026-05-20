@@ -62,8 +62,11 @@ function DrawingCanvas({
   const getSvgPoint = (clientX: number, clientY: number): Point | null => {
     const svg = svgRef.current;
     if (!svg) return null;
-    const rect = svg.getBoundingClientRect();
-    return { x: clientX - rect.left, y: clientY - rect.top };
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: svgPt.x, y: svgPt.y };
   };
 
   const resolvePoint = (raw: Point): { point: Point; snap: SnapTarget | null } => {
@@ -186,6 +189,8 @@ function DrawingCanvas({
     <svg
       ref={svgRef}
       className={`drawing-canvas tool-${tool}${boilActive ? ' boil-active' : ''}`}
+      viewBox="0 0 600 600"
+      preserveAspectRatio="xMidYMid meet"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

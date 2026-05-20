@@ -30,7 +30,6 @@ function ChaptersScreen({ onBack, onSelectChapter }: Props) {
               disabled={ch.locked}
             >
               <span className="chapter-number">{ch.title}</span>
-              {ch.locked && <span className="chapter-lock">🔒</span>}
             </button>
           ))}
         </div>

@@ -28,7 +28,7 @@ function LevelSelectScreen({ chapter, onBack, onSelectLevel }: Props) {
                 onClick={() => !locked && onSelectLevel(levelNum)}
                 disabled={locked}
               >
-                {locked ? '🔒' : levelNum}
+                {locked ? '–' : levelNum}
               </button>
             );
           })}
