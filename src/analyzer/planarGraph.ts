@@ -71,6 +71,39 @@ export function buildPlanarGraph(lines: Line[]): PlanarGraph {
     }
   }
 
+  // "Graph-time snap": For each line, check if any endpoint of any OTHER line
+  // lies close to the body of this line (but not at its own endpoints).
+  // If so, treat that point as lying ON this line and add it as a split.
+  // This handles the case where a long line passes near an existing vertex
+  // without exactly hitting it.
+  const SNAP_TO_LINE_DISTANCE = 4; // pixels, slightly larger than VERTEX_MERGE_DISTANCE
+  for (let i = 0; i < lines.length; i++) {
+    const li = lines[i];
+    const liDx = li.b.x - li.a.x;
+    const liDy = li.b.y - li.a.y;
+    const liLenSq = liDx * liDx + liDy * liDy;
+    if (liLenSq < 1) continue;
+
+    for (let j = 0; j < lines.length; j++) {
+      if (i === j) continue;
+      for (const ep of [lines[j].a, lines[j].b]) {
+        // Project ep onto line i
+        const t = ((ep.x - li.a.x) * liDx + (ep.y - li.a.y) * liDy) / liLenSq;
+        if (t <= 0.01 || t >= 0.99) continue; // Skip if near line's own endpoints
+        const closest: Point = {
+          x: li.a.x + t * liDx,
+          y: li.a.y + t * liDy,
+        };
+        const dx = ep.x - closest.x;
+        const dy = ep.y - closest.y;
+        if (dx * dx + dy * dy <= SNAP_TO_LINE_DISTANCE * SNAP_TO_LINE_DISTANCE) {
+          // This endpoint is close enough to line i: split line i at this point.
+          splits[i].push({ t, point: ep });
+        }
+      }
+    }
+  }
+
   // Sort each split list by t so we can walk along the line in order.
   for (const arr of splits) arr.sort((a, b) => a.t - b.t);
 
