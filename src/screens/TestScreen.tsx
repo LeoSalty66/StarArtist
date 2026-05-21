@@ -4,6 +4,7 @@ import Toolbar from '../canvas/Toolbar';
 import SuccessOverlay from '../canvas/SuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze } from '../analyzer/analyzer';
+import { vertexValidate } from '../analyzer/vertexValidation';
 import { clearStars } from '../storage/starLibrary';
 import { startBabble, stopBabble, isBabbling } from '../audio/voiceBabble';
 import type { Line, Tool } from '../canvas/types';
@@ -23,8 +24,10 @@ function TestScreen({ onBack }: Props) {
 
   // Run the analyzer every time lines change.
   const analysis = useMemo(() => analyze(drawing.lines), [drawing.lines]);
+  const vResult = useMemo(() => vertexValidate(drawing.lines), [drawing.lines]);
 
-  const locked = analysis.isValidStar;
+  // Use vertex validation as primary, fall back to old analyzer.
+  const locked = vResult.isValidStar || analysis.isValidStar;
 
   // Activate line boil after the fill animation finishes
   useEffect(() => {
@@ -148,15 +151,12 @@ function TestScreen({ onBack }: Props) {
       </div>
       {/* Analyzer feedback bar */}
       <div className={`analyzer-bar ${locked ? 'success' : ''}`}>
-        <span className="analyzer-message">{analysis.message}</span>
-        {analysis.boundedFaces.length > 0 && !locked && (
+        <span className="analyzer-message">
+          {vResult.isValidStar ? vResult.message : vResult.message || analysis.message}
+        </span>
+        {!locked && (
           <span className="analyzer-detail">
-            Shapes:{' '}
-            {analysis.boundedFaces.map((f, i) => (
-              <span key={f.id} className="shape-badge">
-                {f.halfEdgeIds.length}△{i < analysis.boundedFaces.length - 1 ? ' ' : ''}
-              </span>
-            ))}
+            Vertices: {vResult.vertices.length}/10 | Edges: {vResult.edgeCount}/15
           </span>
         )}
       </div>
