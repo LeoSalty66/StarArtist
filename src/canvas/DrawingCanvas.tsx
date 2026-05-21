@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Line, Point, Tool } from './types';
 import { dist, findSnap, type SnapTarget } from './geometry';
 import { lineToPath, closestPointOnCurve } from './curveUtils';
+import { processStroke } from './strokeProcessor';
 
 interface Props {
   tool: Tool;
@@ -15,7 +16,7 @@ interface Props {
   successOverlay?: React.ReactNode;
 }
 
-const MIN_LINE_LENGTH = 4;
+const MIN_STROKE_LENGTH = 10;
 const MOVE_GRAB_RADIUS = 14;
 const BEND_GRAB_RADIUS = 12;
 const BEND_LINE_RADIUS = 16;
@@ -27,9 +28,7 @@ interface MoveState {
 
 interface BendState {
   lineId: string;
-  /** Index of existing control point being moved, or null if creating a new one. */
   cpIndex: number | null;
-  /** Parameter t on the curve where the new control point was inserted. */
   insertT: number;
   current: Point;
 }
@@ -46,14 +45,18 @@ function DrawingCanvas({
   successOverlay,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
   const [snap, setSnap] = useState<SnapTarget | null>(null);
   const [moveState, setMoveState] = useState<MoveState | null>(null);
   const [bendState, setBendState] = useState<BendState | null>(null);
+  // Freehand pen state
+  const [isDrawing, setIsDrawing] = useState(false);
+  const rawPointsRef = useRef<Point[]>([]);
+  const [previewPoints, setPreviewPoints] = useState<Point[]>([]);
 
   useEffect(() => {
-    setStartPoint(null);
+    setIsDrawing(false);
+    setPreviewPoints([]);
     setMoveState(null);
     setBendState(null);
   }, [tool]);
@@ -61,7 +64,8 @@ function DrawingCanvas({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setStartPoint(null);
+        setIsDrawing(false);
+        setPreviewPoints([]);
         setMoveState(null);
         setBendState(null);
       }
@@ -93,8 +97,9 @@ function DrawingCanvas({
 
     if (tool === 'pen') {
       const { point } = resolvePoint(raw);
-      setStartPoint(point);
-      setCursor(point);
+      rawPointsRef.current = [point];
+      setPreviewPoints([point]);
+      setIsDrawing(true);
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } else if (tool === 'move') {
       let bestDist = Infinity;
@@ -115,7 +120,6 @@ function DrawingCanvas({
       setMoveState({ targets, current: bestPoint });
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } else if (tool === 'bend') {
-      // Check if clicking near an existing control point first.
       for (const l of lines) {
         if (!l.controlPoints) continue;
         for (let i = 0; i < l.controlPoints.length; i++) {
@@ -126,7 +130,6 @@ function DrawingCanvas({
           }
         }
       }
-      // Otherwise, find the closest line body to add a new control point.
       let bestLine: Line | null = null;
       let bestDist = Infinity;
       let bestT = 0;
@@ -148,6 +151,15 @@ function DrawingCanvas({
     const raw = getSvgPoint(e.clientX, e.clientY);
     if (!raw) return;
 
+    if (tool === 'pen' && isDrawing) {
+      rawPointsRef.current.push(raw);
+      // Throttle preview updates
+      if (rawPointsRef.current.length % 3 === 0) {
+        setPreviewPoints([...rawPointsRef.current]);
+      }
+      return;
+    }
+
     if (tool === 'move' && moveState) {
       setMoveState({ ...moveState, current: raw });
       return;
@@ -165,6 +177,37 @@ function DrawingCanvas({
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     if (locked) return;
 
+    if (tool === 'pen' && isDrawing) {
+      const raw = getSvgPoint(e.clientX, e.clientY);
+      if (raw) {
+        const { point } = resolvePoint(raw);
+        rawPointsRef.current.push(point);
+      }
+
+      // Process the raw stroke
+      const rawPts = rawPointsRef.current;
+      const totalLength = computePathLength(rawPts);
+
+      if (totalLength >= MIN_STROKE_LENGTH && rawPts.length >= 2) {
+        const processed = processStroke(rawPts);
+        if (processed && processed.points.length >= 2) {
+          const pts = processed.points;
+          onAddLine({
+            id: crypto.randomUUID(),
+            a: pts[0],
+            b: pts[pts.length - 1],
+            pathPoints: pts,
+            cornerIndices: processed.cornerIndices,
+          });
+        }
+      }
+
+      setIsDrawing(false);
+      setPreviewPoints([]);
+      rawPointsRef.current = [];
+      return;
+    }
+
     if (tool === 'move' && moveState) {
       const raw = getSvgPoint(e.clientX, e.clientY);
       const finalPoint = raw ?? moveState.current;
@@ -180,21 +223,6 @@ function DrawingCanvas({
       setBendState(null);
       return;
     }
-
-    if (tool !== 'pen' || !startPoint) {
-      setStartPoint(null);
-      return;
-    }
-    const raw = getSvgPoint(e.clientX, e.clientY);
-    const endRaw = raw ?? startPoint;
-    const { point: endPoint } = resolvePoint(endRaw);
-
-    const dx = endPoint.x - startPoint.x;
-    const dy = endPoint.y - startPoint.y;
-    if (Math.hypot(dx, dy) >= MIN_LINE_LENGTH) {
-      onAddLine({ id: crypto.randomUUID(), a: startPoint, b: endPoint });
-    }
-    setStartPoint(null);
   };
 
   const handlePointerLeave = () => {
@@ -227,10 +255,8 @@ function DrawingCanvas({
         if (l.id !== bendState.lineId) return l;
         const cps = [...(l.controlPoints ?? [])];
         if (bendState.cpIndex !== null) {
-          // Moving existing control point
           cps[bendState.cpIndex] = bendState.current;
         } else {
-          // Inserting new control point at the right position
           const insertIdx = getInsertIndex(cps, bendState.insertT);
           cps.splice(insertIdx, 0, bendState.current);
         }
@@ -240,7 +266,10 @@ function DrawingCanvas({
     return result;
   })();
 
-  const showPreview = tool === 'pen' && startPoint && cursor;
+  // Build raw preview path for freehand drawing
+  const previewPath = previewPoints.length >= 2
+    ? 'M ' + previewPoints.map((p) => `${p.x} ${p.y}`).join(' L ')
+    : null;
 
   return (
     <svg
@@ -254,7 +283,7 @@ function DrawingCanvas({
       onPointerLeave={handlePointerLeave}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Committed lines (rendered as paths to support curves) */}
+      {/* Committed lines */}
       {displayLines.map((l) => {
         const eraserMode = tool === 'eraser';
         const pathD = lineToPath(l);
@@ -276,13 +305,26 @@ function DrawingCanvas({
               stroke="#f0f0f0"
               strokeWidth={3}
               strokeLinecap="round"
+              strokeLinejoin="round"
               pointerEvents="none"
             />
+            {/* Show corners as small dots when bend tool is active */}
+            {tool === 'bend' && l.cornerIndices && l.pathPoints && l.cornerIndices.map((ci) => (
+              <circle
+                key={`${l.id}-corner-${ci}`}
+                cx={l.pathPoints![ci].x}
+                cy={l.pathPoints![ci].y}
+                r={4}
+                fill="#ef476f"
+                opacity={0.7}
+                pointerEvents="none"
+              />
+            ))}
           </g>
         );
       })}
 
-      {/* Bend tool: show control points as draggable handles */}
+      {/* Bend tool: show control points */}
       {tool === 'bend' && displayLines.map((l) => {
         if (!l.controlPoints || l.controlPoints.length === 0) return null;
         return l.controlPoints.map((cp, i) => (
@@ -298,6 +340,20 @@ function DrawingCanvas({
         ));
       })}
 
+      {/* Freehand preview while drawing */}
+      {isDrawing && previewPath && (
+        <path
+          d={previewPath}
+          fill="none"
+          stroke="#7ec8e3"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={0.6}
+          pointerEvents="none"
+        />
+      )}
+
       {/* Move tool: highlight */}
       {tool === 'move' && moveState && (
         <circle
@@ -310,23 +366,8 @@ function DrawingCanvas({
         />
       )}
 
-      {/* Pen: preview line */}
-      {showPreview && (
-        <line
-          x1={startPoint.x}
-          y1={startPoint.y}
-          x2={cursor.x}
-          y2={cursor.y}
-          stroke="#7ec8e3"
-          strokeWidth={2}
-          strokeDasharray="6 6"
-          strokeLinecap="round"
-          pointerEvents="none"
-        />
-      )}
-
       {/* Snap indicator */}
-      {snap && tool === 'pen' && (
+      {snap && tool === 'pen' && !isDrawing && (
         <g pointerEvents="none">
           <circle
             cx={snap.point.x}
@@ -339,34 +380,24 @@ function DrawingCanvas({
         </g>
       )}
 
-      {/* Anchor for pen */}
-      {tool === 'pen' && startPoint && !snap && (
-        <circle
-          cx={startPoint.x}
-          cy={startPoint.y}
-          r={4}
-          fill="#7ec8e3"
-          pointerEvents="none"
-        />
-      )}
-
       {/* Success overlay */}
       {successOverlay}
     </svg>
   );
 }
 
-/**
- * Determine where to insert a new control point based on the t parameter.
- * If there are existing CPs, we insert at the position that maintains t ordering.
- */
 function getInsertIndex(existingCPs: Point[], t: number): number {
-  // With no existing CPs, insert at 0.
   if (existingCPs.length === 0) return 0;
-  // With existing CPs, the t-space is divided evenly among segments.
-  // Insert based on proportional position.
   const idx = Math.round(t * existingCPs.length);
   return Math.max(0, Math.min(existingCPs.length, idx));
+}
+
+function computePathLength(points: Point[]): number {
+  let len = 0;
+  for (let i = 1; i < points.length; i++) {
+    len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  }
+  return len;
 }
 
 export default DrawingCanvas;

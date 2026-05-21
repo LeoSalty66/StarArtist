@@ -1,12 +1,17 @@
 import type { Line, Point } from './types';
 
 /**
- * Convert a line (with optional control points) to an SVG path string.
- * - No control points: straight line "M ax ay L bx by"
- * - With control points: quadratic bezier chain
+ * Convert a line to an SVG path string.
+ * Priority: pathPoints > controlPoints > straight line.
  */
 export function lineToPath(line: Line): string {
-  const { a, b, controlPoints } = line;
+  const { a, b, controlPoints, pathPoints } = line;
+
+  // Freehand stroke: smooth path through the points
+  if (pathPoints && pathPoints.length >= 2) {
+    return freehandToPath(pathPoints);
+  }
+
   if (!controlPoints || controlPoints.length === 0) {
     return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
   }
@@ -17,24 +22,58 @@ export function lineToPath(line: Line): string {
   }
 
   // Multiple control points: chain of quadratic beziers.
-  // Split into segments. For N control points, we have N+1 segments
-  // with midpoints between consecutive control points as the on-curve joints.
   let d = `M ${a.x} ${a.y}`;
   const cps = controlPoints;
 
   for (let i = 0; i < cps.length; i++) {
     let endPt: Point;
     if (i < cps.length - 1) {
-      // Midpoint between consecutive control points
       endPt = {
         x: (cps[i].x + cps[i + 1].x) / 2,
         y: (cps[i].y + cps[i + 1].y) / 2,
       };
     } else {
-      // Last segment ends at b
       endPt = b;
     }
     d += ` Q ${cps[i].x} ${cps[i].y} ${endPt.x} ${endPt.y}`;
+  }
+
+  return d;
+}
+
+/**
+ * Convert freehand path points to a smooth SVG path using Catmull-Rom-style
+ * quadratic bezier smoothing.
+ */
+function freehandToPath(points: Point[]): string {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+
+  // Use quadratic bezier smoothing: each point is a control point,
+  // and the on-curve points are midpoints between consecutive points.
+  for (let i = 0; i < points.length - 1; i++) {
+    if (i === 0) {
+      // First segment: straight to midpoint of first two control points
+      const mid = {
+        x: (points[0].x + points[1].x) / 2,
+        y: (points[0].y + points[1].y) / 2,
+      };
+      d += ` L ${mid.x} ${mid.y}`;
+    } else if (i === points.length - 2) {
+      // Last segment: quadratic to the final point
+      d += ` Q ${points[i].x} ${points[i].y} ${points[i + 1].x} ${points[i + 1].y}`;
+    } else {
+      // Middle segments: quadratic to midpoint of next two
+      const mid = {
+        x: (points[i].x + points[i + 1].x) / 2,
+        y: (points[i].y + points[i + 1].y) / 2,
+      };
+      d += ` Q ${points[i].x} ${points[i].y} ${mid.x} ${mid.y}`;
+    }
   }
 
   return d;
