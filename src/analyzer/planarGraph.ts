@@ -1,5 +1,5 @@
 import type { Line, Point } from '../canvas/types';
-import { segmentIntersection } from '../canvas/geometry';
+import { segmentIntersection, getLineSegments } from '../canvas/geometry';
 
 /** A vertex in the planar graph. */
 export interface Vertex {
@@ -29,8 +29,41 @@ export interface PlanarGraph {
 const VERTEX_MERGE_DISTANCE = 1.5; // pixels
 
 /**
- * Build a planar graph from a set of straight line segments.
+ * Explode lines with corners into sub-lines (one per segment between corners).
+ * Lines without corners pass through unchanged (as a single a->b line).
+ * This ensures corners become vertices in the planar graph.
+ */
+function explodeAtCorners(lines: Line[]): Line[] {
+  const result: Line[] = [];
+  for (const l of lines) {
+    if (!l.pathPoints || !l.cornerIndices || l.cornerIndices.length <= 2) {
+      // No internal corners, use as-is (straight or single curve segment)
+      result.push(l);
+      continue;
+    }
+
+    // Split at each corner. cornerIndices includes first and last point.
+    const sorted = [...l.cornerIndices].sort((a, b) => a - b);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const startIdx = sorted[i];
+      const endIdx = sorted[i + 1];
+      const subPoints = l.pathPoints.slice(startIdx, endIdx + 1);
+      if (subPoints.length < 2) continue;
+      result.push({
+        id: `${l.id}__seg${i}`,
+        a: subPoints[0],
+        b: subPoints[subPoints.length - 1],
+        pathPoints: subPoints,
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Build a planar graph from a set of line segments (straight or curved).
  *
+ * - First explodes lines at detected corners into sub-segments.
  * - Computes all pairwise intersections (including collinear overlaps).
  * - Splits each line at every intersection on it (in order along the line).
  * - Deduplicates vertices by spatial proximity.
@@ -38,7 +71,10 @@ const VERTEX_MERGE_DISTANCE = 1.5; // pixels
  * - Returns vertices and a list of directed half-edges (each undirected edge
  *   appears twice, once per direction, paired via `twin`).
  */
-export function buildPlanarGraph(lines: Line[]): PlanarGraph {
+export function buildPlanarGraph(inputLines: Line[]): PlanarGraph {
+  // Explode lines at corners first so corners become graph vertices.
+  const lines = explodeAtCorners(inputLines);
+
   // Per-line list of split points along the segment, expressed as parameter t in [0,1].
   const splits: { t: number; point: Point }[][] = lines.map((l) => [
     { t: 0, point: l.a },
@@ -51,22 +87,30 @@ export function buildPlanarGraph(lines: Line[]): PlanarGraph {
       const li = lines[i];
       const lj = lines[j];
 
-      // Check for collinear overlap first.
-      const overlapPoints = findCollinearOverlapSplits(li, lj);
-      if (overlapPoints) {
-        // Add all overlap boundary points to both lines.
-        for (const p of overlapPoints.forI) {
-          splits[i].push({ t: paramOnSegment(p, li.a, li.b), point: p });
+      // For curved lines, check piecewise segments for intersections.
+      const segsI = getLineSegments(li);
+      const segsJ = getLineSegments(lj);
+      for (const [a1, a2] of segsI) {
+        for (const [b1, b2] of segsJ) {
+          const ix = segmentIntersection(a1, a2, b1, b2);
+          if (!ix) continue;
+          // Compute t on the overall a->b line for each
+          splits[i].push({ t: paramOnSegment(ix, li.a, li.b), point: ix });
+          splits[j].push({ t: paramOnSegment(ix, lj.a, lj.b), point: ix });
         }
-        for (const p of overlapPoints.forJ) {
-          splits[j].push({ t: paramOnSegment(p, lj.a, lj.b), point: p });
+      }
+
+      // Also check for collinear overlap (straight lines only).
+      if (!li.pathPoints && !lj.pathPoints) {
+        const overlapPoints = findCollinearOverlapSplits(li, lj);
+        if (overlapPoints) {
+          for (const p of overlapPoints.forI) {
+            splits[i].push({ t: paramOnSegment(p, li.a, li.b), point: p });
+          }
+          for (const p of overlapPoints.forJ) {
+            splits[j].push({ t: paramOnSegment(p, lj.a, lj.b), point: p });
+          }
         }
-      } else {
-        // Standard crossing intersection.
-        const ix = segmentIntersection(li.a, li.b, lj.a, lj.b);
-        if (!ix) continue;
-        splits[i].push({ t: paramOnSegment(ix, li.a, li.b), point: ix });
-        splits[j].push({ t: paramOnSegment(ix, lj.a, lj.b), point: ix });
       }
     }
   }
