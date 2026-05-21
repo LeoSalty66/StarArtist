@@ -192,10 +192,15 @@ function DrawingCanvas({
         const processed = processStroke(rawPts);
         if (processed && processed.points.length >= 2) {
           const pts = processed.points;
+          // Preserve the snapped start and end points
+          const snappedStart = rawPts[0]; // first raw point was already snapped on pointerDown
+          const snappedEnd = rawPts[rawPts.length - 1]; // last raw point was snapped above
+          pts[0] = snappedStart;
+          pts[pts.length - 1] = snappedEnd;
           onAddLine({
             id: crypto.randomUUID(),
-            a: pts[0],
-            b: pts[pts.length - 1],
+            a: snappedStart,
+            b: snappedEnd,
             pathPoints: pts,
             cornerIndices: processed.cornerIndices,
           });

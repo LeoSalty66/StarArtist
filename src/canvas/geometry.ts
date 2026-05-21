@@ -87,7 +87,7 @@ export function findSnap(
   }
   if (bestEndpoint) return { point: bestEndpoint.point, kind: 'endpoint' };
 
-  // 2. Intersections
+  // 2. Intersections (check all piecewise segments for curves)
   let bestIntersection: { point: Point; distance: number } | null = null;
   for (let i = 0; i < lines.length; i++) {
     for (let j = i + 1; j < lines.length; j++) {
@@ -97,19 +97,15 @@ export function findSnap(
       ) {
         continue;
       }
-      const ix = segmentIntersection(
-        lines[i].a,
-        lines[i].b,
-        lines[j].a,
-        lines[j].b,
-      );
-      if (!ix) continue;
-      const d = dist(cursor, ix);
-      if (
-        d <= intersectionRadius &&
-        (!bestIntersection || d < bestIntersection.distance)
-      ) {
-        bestIntersection = { point: ix, distance: d };
+      const intersections = findLineIntersections(lines[i], lines[j]);
+      for (const ix of intersections) {
+        const d = dist(cursor, ix);
+        if (
+          d <= intersectionRadius &&
+          (!bestIntersection || d < bestIntersection.distance)
+        ) {
+          bestIntersection = { point: ix, distance: d };
+        }
       }
     }
   }
@@ -117,16 +113,78 @@ export function findSnap(
     return { point: bestIntersection.point, kind: 'intersection' };
   }
 
-  // 3. Line body
+  // 3. Line body (check along pathPoints if curve, else straight a->b)
   let bestLine: { point: Point; distance: number } | null = null;
   for (const l of lines) {
     if (l.id === options.excludeLineId) continue;
-    const { point, distance } = closestPointOnSegment(cursor, l.a, l.b);
-    if (distance <= lineRadius && (!bestLine || distance < bestLine.distance)) {
-      bestLine = { point, distance };
+    const result = closestPointOnLine(cursor, l);
+    if (result.distance <= lineRadius && (!bestLine || result.distance < bestLine.distance)) {
+      bestLine = { point: result.point, distance: result.distance };
     }
   }
   if (bestLine) return { point: bestLine.point, kind: 'line' };
 
   return null;
+}
+
+/**
+ * Find the closest point on a line (using pathPoints if it's a curve,
+ * or the straight segment from a to b otherwise).
+ */
+export function closestPointOnLine(
+  p: Point,
+  l: Line,
+): { point: Point; distance: number } {
+  if (l.pathPoints && l.pathPoints.length >= 2) {
+    // Check each segment of the path polyline
+    let best = { point: l.pathPoints[0], distance: dist(p, l.pathPoints[0]) };
+    for (let i = 0; i < l.pathPoints.length - 1; i++) {
+      const { point, distance } = closestPointOnSegment(p, l.pathPoints[i], l.pathPoints[i + 1]);
+      if (distance < best.distance) {
+        best = { point, distance };
+      }
+    }
+    return best;
+  }
+  const { point, distance } = closestPointOnSegment(p, l.a, l.b);
+  return { point, distance };
+}
+
+
+/**
+ * Get the piecewise straight segments that make up a line.
+ * If it has pathPoints, use consecutive pairs. Otherwise, just a->b.
+ */
+export function getLineSegments(l: Line): [Point, Point][] {
+  if (l.pathPoints && l.pathPoints.length >= 2) {
+    const segs: [Point, Point][] = [];
+    for (let i = 0; i < l.pathPoints.length - 1; i++) {
+      segs.push([l.pathPoints[i], l.pathPoints[i + 1]]);
+    }
+    return segs;
+  }
+  return [[l.a, l.b]];
+}
+
+/**
+ * Find all intersection points between two lines (supporting curves via
+ * piecewise segment comparison).
+ */
+export function findLineIntersections(l1: Line, l2: Line): Point[] {
+  const segs1 = getLineSegments(l1);
+  const segs2 = getLineSegments(l2);
+  const results: Point[] = [];
+
+  for (const [a1, a2] of segs1) {
+    for (const [b1, b2] of segs2) {
+      const ix = segmentIntersection(a1, a2, b1, b2);
+      if (ix) {
+        // Deduplicate: don't add if too close to an existing intersection
+        const isDup = results.some((r) => dist(r, ix) < 2);
+        if (!isDup) results.push(ix);
+      }
+    }
+  }
+
+  return results;
 }
