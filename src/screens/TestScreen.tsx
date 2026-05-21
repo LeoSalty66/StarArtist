@@ -5,6 +5,7 @@ import SuccessOverlay from '../canvas/SuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze } from '../analyzer/analyzer';
 import { clearStars } from '../storage/starLibrary';
+import { startBabble, stopBabble, isBabbling } from '../audio/voiceBabble';
 import type { Line, Tool } from '../canvas/types';
 import type { NormalizedLine } from '../levels/types';
 
@@ -16,6 +17,7 @@ function TestScreen({ onBack }: Props) {
   const [tool, setTool] = useState<Tool>('pen');
   const [boilActive, setBoilActive] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
+  const [babbling, setBabbling] = useState(false);
   const drawing = useDrawingState();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +35,11 @@ function TestScreen({ onBack }: Props) {
       setBoilActive(false);
     }
   }, [locked]);
+
+  // Stop babble on unmount
+  useEffect(() => {
+    return () => { stopBabble(); };
+  }, []);
 
   const handleExport = useCallback(() => {
     const wrapper = wrapperRef.current;
@@ -78,6 +85,21 @@ function TestScreen({ onBack }: Props) {
           style={{ marginLeft: '0.5rem' }}
         >
           Clear Stars
+        </button>
+        <button
+          className={`tool-btn ${babbling ? 'active' : ''}`}
+          onClick={() => {
+            if (isBabbling()) {
+              stopBabble();
+              setBabbling(false);
+            } else {
+              startBabble();
+              setBabbling(true);
+            }
+          }}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          {babbling ? 'Stop Voice' : 'Test Voice'}
         </button>
         <span className="header-hint">
           {locked
