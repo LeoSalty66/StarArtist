@@ -61,6 +61,8 @@ const BASE_PATH = '/audio/stellar/';
 let audioCtx: AudioContext | null = null;
 let buffers: AudioBuffer[] = [];
 let loaded = false;
+let shortIdxs: Set<number> = new Set();
+let longIdxs: Set<number> = new Set();
 
 /** Preload all voice clips into audio buffers. */
 export async function preloadVoice(): Promise<void> {
@@ -73,16 +75,34 @@ export async function preloadVoice(): Promise<void> {
   });
   buffers = await Promise.all(promises);
   loaded = true;
+
+  // Identify the 10 shortest and 10 longest clips by duration.
+  const indexed = buffers.map((b, i) => ({ i, dur: b.duration }));
+  indexed.sort((a, b) => a.dur - b.dur);
+  shortIdxs = new Set(indexed.slice(0, 10).map((x) => x.i));
+  longIdxs = new Set(indexed.slice(-10).map((x) => x.i));
 }
 
-/** Play a single random clip with pitch variation. */
+let lastClipIdx = -1;
+let lastClipCategory: 'short' | 'long' | 'mid' = 'mid';
+
+/** Play a single random clip (never the same one twice in a row). */
 function playRandomClip(): void {
   if (!audioCtx || buffers.length === 0) return;
-  const buf = buffers[Math.floor(Math.random() * buffers.length)];
+  let idx = Math.floor(Math.random() * buffers.length);
+  // Avoid repeating the same clip
+  if (buffers.length > 1) {
+    while (idx === lastClipIdx) {
+      idx = Math.floor(Math.random() * buffers.length);
+    }
+  }
+  lastClipIdx = idx;
+  lastClipCategory = longIdxs.has(idx) ? 'long' : shortIdxs.has(idx) ? 'short' : 'mid';
+  const buf = buffers[idx];
   const source = audioCtx.createBufferSource();
   source.buffer = buf;
-  // Random pitch shift: 0.85 to 1.15 (±15%)
-  source.playbackRate.value = 0.85 + Math.random() * 0.3;
+  // No pitch shifting, keep natural voice
+  source.playbackRate.value = 1.0;
   // Slightly random volume
   const gain = audioCtx.createGain();
   gain.gain.value = 0.3 + Math.random() * 0.2;
@@ -109,8 +129,8 @@ function scheduleNextSyllable(): void {
   if (syllablesLeft <= 0) {
     // Start a new "word": 3-8 syllables
     syllablesLeft = 3 + Math.floor(Math.random() * 6);
-    // Pause before starting the word (200-500ms)
-    const pause = 200 + Math.random() * 300;
+    // Pause before starting the word (400-800ms)
+    const pause = 400 + Math.random() * 400;
     babbleInterval = window.setTimeout(() => {
       playSyllableAndContinue();
     }, pause);
@@ -123,8 +143,10 @@ function playSyllableAndContinue(): void {
   if (babbleInterval === null && syllablesLeft <= 0) return; // stopped
   playRandomClip();
   syllablesLeft--;
-  // Time between syllables within a word: 80-150ms
-  const gap = 80 + Math.random() * 70;
+  // Time between syllables: adjust based on clip length category
+  let gap = 380 + Math.random() * 100;
+  if (lastClipCategory === 'long') gap += 100;
+  else if (lastClipCategory === 'short') gap -= 100;
   babbleInterval = window.setTimeout(() => {
     if (babbleInterval !== null) {
       scheduleNextSyllable();
