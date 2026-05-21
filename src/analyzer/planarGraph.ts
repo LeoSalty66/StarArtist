@@ -90,13 +90,14 @@ export function buildPlanarGraph(inputLines: Line[]): PlanarGraph {
       // For curved lines, check piecewise segments for intersections.
       const segsI = getLineSegments(li);
       const segsJ = getLineSegments(lj);
-      for (const [a1, a2] of segsI) {
-        for (const [b1, b2] of segsJ) {
-          const ix = segmentIntersection(a1, a2, b1, b2);
+
+      for (let si = 0; si < segsI.length; si++) {
+        for (let sj = 0; sj < segsJ.length; sj++) {
+          const ix = segmentIntersection(segsI[si][0], segsI[si][1], segsJ[sj][0], segsJ[sj][1]);
           if (!ix) continue;
-          // Compute t on the overall a->b line for each
-          splits[i].push({ t: paramOnSegment(ix, li.a, li.b), point: ix });
-          splits[j].push({ t: paramOnSegment(ix, lj.a, lj.b), point: ix });
+          // Compute t along the polyline (not straight chord)
+          splits[i].push({ t: paramAlongPolyline(ix, si, segsI), point: ix });
+          splits[j].push({ t: paramAlongPolyline(ix, sj, segsJ), point: ix });
         }
       }
 
@@ -116,34 +117,41 @@ export function buildPlanarGraph(inputLines: Line[]): PlanarGraph {
   }
 
   // "Graph-time snap": For each line, check if any endpoint of any OTHER line
-  // lies close to the body of this line (but not at its own endpoints).
-  // If so, treat that point as lying ON this line and add it as a split.
-  // This handles the case where a long line passes near an existing vertex
-  // without exactly hitting it.
-  const SNAP_TO_LINE_DISTANCE = 4; // pixels, slightly larger than VERTEX_MERGE_DISTANCE
+  // lies close to the body of this line. If so, split line i there.
+  const SNAP_TO_LINE_DISTANCE = 4;
   for (let i = 0; i < lines.length; i++) {
     const li = lines[i];
-    const liDx = li.b.x - li.a.x;
-    const liDy = li.b.y - li.a.y;
-    const liLenSq = liDx * liDx + liDy * liDy;
-    if (liLenSq < 1) continue;
+    const segsI = getLineSegments(li);
+    const totalLen = segsI.reduce((sum, [s, e]) => sum + Math.hypot(e.x - s.x, e.y - s.y), 0);
+    if (totalLen < 1) continue;
 
     for (let j = 0; j < lines.length; j++) {
       if (i === j) continue;
       for (const ep of [lines[j].a, lines[j].b]) {
-        // Project ep onto line i
-        const t = ((ep.x - li.a.x) * liDx + (ep.y - li.a.y) * liDy) / liLenSq;
-        if (t <= 0.01 || t >= 0.99) continue; // Skip if near line's own endpoints
-        const closest: Point = {
-          x: li.a.x + t * liDx,
-          y: li.a.y + t * liDy,
-        };
-        const dx = ep.x - closest.x;
-        const dy = ep.y - closest.y;
-        if (dx * dx + dy * dy <= SNAP_TO_LINE_DISTANCE * SNAP_TO_LINE_DISTANCE) {
-          // This endpoint is close enough to line i: split line i at this point.
-          splits[i].push({ t, point: ep });
+        // Find closest point along line i's segments
+        let bestDist = Infinity;
+        let bestSegIdx = 0;
+        let bestT = 0;
+        for (let si = 0; si < segsI.length; si++) {
+          const [sa, sb] = segsI[si];
+          const dx = sb.x - sa.x;
+          const dy = sb.y - sa.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq < 0.01) continue;
+          let t = ((ep.x - sa.x) * dx + (ep.y - sa.y) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          const closest = { x: sa.x + t * dx, y: sa.y + t * dy };
+          const d = Math.hypot(ep.x - closest.x, ep.y - closest.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestSegIdx = si;
+            bestT = t;
+          }
         }
+        if (bestDist > SNAP_TO_LINE_DISTANCE) continue;
+        const globalT = paramAlongPolyline(ep, bestSegIdx, segsI);
+        if (globalT <= 0.01 || globalT >= 0.99) continue;
+        splits[i].push({ t: globalT, point: ep });
       }
     }
   }
@@ -330,4 +338,39 @@ function findCollinearOverlapSplits(
   }
 
   return { forI, forJ };
+}
+
+/**
+ * Compute a global t parameter (0..1) for a point along a polyline,
+ * given which segment it's on and the segment index.
+ * Uses arc-length parameterization.
+ */
+function paramAlongPolyline(p: Point, segIdx: number, segs: [Point, Point][]): number {
+  // Compute cumulative lengths
+  const lengths: number[] = [];
+  let totalLen = 0;
+  for (const [s, e] of segs) {
+    const len = Math.hypot(e.x - s.x, e.y - s.y);
+    lengths.push(len);
+    totalLen += len;
+  }
+  if (totalLen === 0) return 0;
+
+  // Length before this segment
+  let lenBefore = 0;
+  for (let i = 0; i < segIdx; i++) lenBefore += lengths[i];
+
+  // How far along this segment the point is
+  const [sa, sb] = segs[segIdx];
+  const segLen = lengths[segIdx];
+  let localT = 0;
+  if (segLen > 0) {
+    const dx = sb.x - sa.x;
+    const dy = sb.y - sa.y;
+    localT = Math.max(0, Math.min(1,
+      ((p.x - sa.x) * dx + (p.y - sa.y) * dy) / (segLen * segLen)
+    ));
+  }
+
+  return (lenBefore + localT * segLen) / totalLen;
 }
