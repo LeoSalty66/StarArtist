@@ -329,6 +329,22 @@ function DrawingCanvas({
                 pointerEvents="none"
               />
             ))}
+            {/* Always show endpoints as red dots for debugging */}
+            <circle cx={l.a.x} cy={l.a.y} r={4} fill="#ef476f" pointerEvents="none" />
+            <circle cx={l.b.x} cy={l.b.y} r={4} fill="#ef476f" pointerEvents="none" />
+            {/* Show internal corners as red dots */}
+            {l.cornerIndices && l.pathPoints && l.cornerIndices
+              .filter((ci) => ci !== 0 && ci !== l.pathPoints!.length - 1)
+              .map((ci) => (
+                <circle
+                  key={`${l.id}-corner-${ci}`}
+                  cx={l.pathPoints![ci].x}
+                  cy={l.pathPoints![ci].y}
+                  r={4}
+                  fill="#ef476f"
+                  pointerEvents="none"
+                />
+              ))}
           </g>
         );
       })}

@@ -20,7 +20,7 @@ export interface ProcessedStroke {
 
 const RESAMPLE_SPACING = 8; // pixels between resampled points
 const SMOOTH_WINDOW = 5; // moving average window size
-const CORNER_ANGLE_THRESHOLD = 15; // degrees: sharper than this = a corner
+const CORNER_ANGLE_THRESHOLD = 20; // degrees: sharper than this = a corner
 const SIMPLIFY_TOLERANCE = 3; // pixels: how aggressively to reduce points in smooth sections
 
 /**
