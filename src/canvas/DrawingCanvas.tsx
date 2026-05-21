@@ -153,6 +153,10 @@ function DrawingCanvas({
 
     if (tool === 'pen' && isDrawing) {
       rawPointsRef.current.push(raw);
+      // Check for snap at current position (for visual feedback)
+      const { point, snap: snapTarget } = resolvePoint(raw);
+      setCursor(point);
+      setSnap(snapTarget);
       // Throttle preview updates
       if (rawPointsRef.current.length % 3 === 0) {
         setPreviewPoints([...rawPointsRef.current]);
@@ -372,7 +376,7 @@ function DrawingCanvas({
       )}
 
       {/* Snap indicator */}
-      {snap && tool === 'pen' && !isDrawing && (
+      {snap && tool === 'pen' && (
         <g pointerEvents="none">
           <circle
             cx={snap.point.x}
