@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import type { Line, Point, Tool } from './types';
-import { dist, findSnap, type SnapTarget } from './geometry';
+import { dist, findSnap, findLineIntersections, type SnapTarget } from './geometry';
 import { lineToPath, closestPointOnCurve } from './curveUtils';
 import { processStroke } from './strokeProcessor';
 
@@ -280,6 +280,18 @@ function DrawingCanvas({
     ? 'M ' + previewPoints.map((p) => `${p.x} ${p.y}`).join(' L ')
     : null;
 
+  // Compute all intersection points for debug visualization
+  const intersectionPoints = useMemo(() => {
+    const pts: Point[] = [];
+    for (let i = 0; i < displayLines.length; i++) {
+      for (let j = i + 1; j < displayLines.length; j++) {
+        const ixs = findLineIntersections(displayLines[i], displayLines[j]);
+        pts.push(...ixs);
+      }
+    }
+    return pts;
+  }, [displayLines]);
+
   return (
     <svg
       ref={svgRef}
@@ -404,6 +416,18 @@ function DrawingCanvas({
           />
         </g>
       )}
+
+      {/* Debug: intersection dots */}
+      {intersectionPoints.map((p, i) => (
+        <circle
+          key={`ix-${i}`}
+          cx={p.x}
+          cy={p.y}
+          r={5}
+          fill="#ffff00"
+          pointerEvents="none"
+        />
+      ))}
 
       {/* Success overlay */}
       {successOverlay}
