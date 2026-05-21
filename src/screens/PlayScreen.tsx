@@ -133,6 +133,10 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onNextLevel }: Prop
                 const playerMoves = moves.filter((m) => !m.lineId.startsWith('given-'));
                 if (playerMoves.length > 0) drawing.movePoint(playerMoves);
               }}
+              onBend={(lineId, cpIndex, position) => {
+                if (lineId.startsWith('given-')) return;
+                drawing.bendLine(lineId, cpIndex, position);
+              }}
               locked={locked}
               boilActive={boilActive}
               successOverlay={

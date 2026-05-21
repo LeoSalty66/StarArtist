@@ -281,6 +281,10 @@ body {
   cursor: grab;
 }
 
+.drawing-canvas.tool-bend {
+  cursor: pointer;
+}
+
 .drawing-canvas.tool-eraser {
   cursor: not-allowed;
 }

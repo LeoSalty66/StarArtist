@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Line, Point, Tool } from './types';
 import { dist, findSnap, type SnapTarget } from './geometry';
+import { lineToPath, closestPointOnCurve } from './curveUtils';
 
 interface Props {
   tool: Tool;
@@ -8,6 +9,7 @@ interface Props {
   onAddLine: (line: Line) => void;
   onRemoveLine: (id: string) => void;
   onMovePoint: (moves: { lineId: string; endpoint: 'a' | 'b'; to: Point }[]) => void;
+  onBend: (lineId: string, controlPointIndex: number | null, position: Point) => void;
   locked?: boolean;
   boilActive?: boolean;
   successOverlay?: React.ReactNode;
@@ -15,11 +17,20 @@ interface Props {
 
 const MIN_LINE_LENGTH = 4;
 const MOVE_GRAB_RADIUS = 14;
+const BEND_GRAB_RADIUS = 12;
+const BEND_LINE_RADIUS = 16;
 
 interface MoveState {
-  /** The lines and which endpoint on each is being dragged. */
   targets: { lineId: string; endpoint: 'a' | 'b' }[];
-  /** Current position during drag (for preview). */
+  current: Point;
+}
+
+interface BendState {
+  lineId: string;
+  /** Index of existing control point being moved, or null if creating a new one. */
+  cpIndex: number | null;
+  /** Parameter t on the curve where the new control point was inserted. */
+  insertT: number;
   current: Point;
 }
 
@@ -29,30 +40,30 @@ function DrawingCanvas({
   onAddLine,
   onRemoveLine,
   onMovePoint,
+  onBend,
   locked,
   boilActive,
   successOverlay,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  // Pen state
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
   const [snap, setSnap] = useState<SnapTarget | null>(null);
-  // Move state
   const [moveState, setMoveState] = useState<MoveState | null>(null);
+  const [bendState, setBendState] = useState<BendState | null>(null);
 
-  // Cancel in-progress actions when switching tools
   useEffect(() => {
     setStartPoint(null);
     setMoveState(null);
+    setBendState(null);
   }, [tool]);
 
-  // Escape cancels in-progress actions
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setStartPoint(null);
         setMoveState(null);
+        setBendState(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -86,28 +97,49 @@ function DrawingCanvas({
       setCursor(point);
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } else if (tool === 'move') {
-      // Find the closest endpoint within grab radius.
       let bestDist = Infinity;
       let bestPoint: Point | null = null;
-
       for (const l of lines) {
         const dA = dist(raw, l.a);
         const dB = dist(raw, l.b);
         if (dA < bestDist) { bestDist = dA; bestPoint = l.a; }
         if (dB < bestDist) { bestDist = dB; bestPoint = l.b; }
       }
-
       if (!bestPoint || bestDist > MOVE_GRAB_RADIUS) return;
-
-      // Find ALL lines that share this point (within merge distance).
       const targets: { lineId: string; endpoint: 'a' | 'b' }[] = [];
       for (const l of lines) {
         if (dist(bestPoint, l.a) <= 2) targets.push({ lineId: l.id, endpoint: 'a' });
         if (dist(bestPoint, l.b) <= 2) targets.push({ lineId: l.id, endpoint: 'b' });
       }
-
       if (targets.length === 0) return;
       setMoveState({ targets, current: bestPoint });
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } else if (tool === 'bend') {
+      // Check if clicking near an existing control point first.
+      for (const l of lines) {
+        if (!l.controlPoints) continue;
+        for (let i = 0; i < l.controlPoints.length; i++) {
+          if (dist(raw, l.controlPoints[i]) <= BEND_GRAB_RADIUS) {
+            setBendState({ lineId: l.id, cpIndex: i, insertT: 0, current: raw });
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+            return;
+          }
+        }
+      }
+      // Otherwise, find the closest line body to add a new control point.
+      let bestLine: Line | null = null;
+      let bestDist = Infinity;
+      let bestT = 0;
+      for (const l of lines) {
+        const { t, distance } = closestPointOnCurve(raw, l);
+        if (distance < bestDist) {
+          bestDist = distance;
+          bestLine = l;
+          bestT = t;
+        }
+      }
+      if (!bestLine || bestDist > BEND_LINE_RADIUS) return;
+      setBendState({ lineId: bestLine.id, cpIndex: null, insertT: bestT, current: raw });
       (e.target as Element).setPointerCapture?.(e.pointerId);
     }
   };
@@ -118,6 +150,10 @@ function DrawingCanvas({
 
     if (tool === 'move' && moveState) {
       setMoveState({ ...moveState, current: raw });
+      return;
+    }
+    if (tool === 'bend' && bendState) {
+      setBendState({ ...bendState, current: raw });
       return;
     }
 
@@ -132,10 +168,16 @@ function DrawingCanvas({
     if (tool === 'move' && moveState) {
       const raw = getSvgPoint(e.clientX, e.clientY);
       const finalPoint = raw ?? moveState.current;
-      onMovePoint(
-        moveState.targets.map((t) => ({ ...t, to: finalPoint })),
-      );
+      onMovePoint(moveState.targets.map((t) => ({ ...t, to: finalPoint })));
       setMoveState(null);
+      return;
+    }
+
+    if (tool === 'bend' && bendState) {
+      const raw = getSvgPoint(e.clientX, e.clientY);
+      const finalPoint = raw ?? bendState.current;
+      onBend(bendState.lineId, bendState.cpIndex, finalPoint);
+      setBendState(null);
       return;
     }
 
@@ -150,11 +192,7 @@ function DrawingCanvas({
     const dx = endPoint.x - startPoint.x;
     const dy = endPoint.y - startPoint.y;
     if (Math.hypot(dx, dy) >= MIN_LINE_LENGTH) {
-      onAddLine({
-        id: crypto.randomUUID(),
-        a: startPoint,
-        b: endPoint,
-      });
+      onAddLine({ id: crypto.randomUUID(), a: startPoint, b: endPoint });
     }
     setStartPoint(null);
   };
@@ -170,9 +208,11 @@ function DrawingCanvas({
     onRemoveLine(id);
   };
 
-  // Compute display lines: apply move state in real-time for preview.
-  const displayLines = moveState
-    ? lines.map((l) => {
+  // Preview: apply move/bend state for real-time feedback.
+  const displayLines = (() => {
+    let result = lines;
+    if (moveState) {
+      result = result.map((l) => {
         let newA = l.a;
         let newB = l.b;
         for (const t of moveState.targets) {
@@ -180,8 +220,25 @@ function DrawingCanvas({
           if (t.lineId === l.id && t.endpoint === 'b') newB = moveState.current;
         }
         return { ...l, a: newA, b: newB };
-      })
-    : lines;
+      });
+    }
+    if (bendState) {
+      result = result.map((l) => {
+        if (l.id !== bendState.lineId) return l;
+        const cps = [...(l.controlPoints ?? [])];
+        if (bendState.cpIndex !== null) {
+          // Moving existing control point
+          cps[bendState.cpIndex] = bendState.current;
+        } else {
+          // Inserting new control point at the right position
+          const insertIdx = getInsertIndex(cps, bendState.insertT);
+          cps.splice(insertIdx, 0, bendState.current);
+        }
+        return { ...l, controlPoints: cps };
+      });
+    }
+    return result;
+  })();
 
   const showPreview = tool === 'pen' && startPoint && cursor;
 
@@ -197,28 +254,25 @@ function DrawingCanvas({
       onPointerLeave={handlePointerLeave}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Committed lines */}
+      {/* Committed lines (rendered as paths to support curves) */}
       {displayLines.map((l) => {
         const eraserMode = tool === 'eraser';
+        const pathD = lineToPath(l);
         return (
           <g key={l.id} className="line-group">
             {eraserMode && (
-              <line
-                x1={l.a.x}
-                y1={l.a.y}
-                x2={l.b.x}
-                y2={l.b.y}
+              <path
+                d={pathD}
+                fill="none"
                 stroke="transparent"
                 strokeWidth={18}
                 onClick={(e) => handleLineClick(l.id, e)}
                 style={{ cursor: 'pointer' }}
               />
             )}
-            <line
-              x1={l.a.x}
-              y1={l.a.y}
-              x2={l.b.x}
-              y2={l.b.y}
+            <path
+              d={pathD}
+              fill="none"
               stroke="#f0f0f0"
               strokeWidth={3}
               strokeLinecap="round"
@@ -228,7 +282,23 @@ function DrawingCanvas({
         );
       })}
 
-      {/* Move tool: highlight the point being dragged */}
+      {/* Bend tool: show control points as draggable handles */}
+      {tool === 'bend' && displayLines.map((l) => {
+        if (!l.controlPoints || l.controlPoints.length === 0) return null;
+        return l.controlPoints.map((cp, i) => (
+          <circle
+            key={`${l.id}-cp-${i}`}
+            cx={cp.x}
+            cy={cp.y}
+            r={5}
+            fill="#7ec8e3"
+            opacity={0.7}
+            pointerEvents="none"
+          />
+        ));
+      })}
+
+      {/* Move tool: highlight */}
       {tool === 'move' && moveState && (
         <circle
           cx={moveState.current.x}
@@ -240,7 +310,7 @@ function DrawingCanvas({
         />
       )}
 
-      {/* Pen: preview line while dragging */}
+      {/* Pen: preview line */}
       {showPreview && (
         <line
           x1={startPoint.x}
@@ -269,7 +339,7 @@ function DrawingCanvas({
         </g>
       )}
 
-      {/* Anchor for the in-progress line */}
+      {/* Anchor for pen */}
       {tool === 'pen' && startPoint && !snap && (
         <circle
           cx={startPoint.x}
@@ -280,10 +350,23 @@ function DrawingCanvas({
         />
       )}
 
-      {/* Success fill overlay */}
+      {/* Success overlay */}
       {successOverlay}
     </svg>
   );
+}
+
+/**
+ * Determine where to insert a new control point based on the t parameter.
+ * If there are existing CPs, we insert at the position that maintains t ordering.
+ */
+function getInsertIndex(existingCPs: Point[], t: number): number {
+  // With no existing CPs, insert at 0.
+  if (existingCPs.length === 0) return 0;
+  // With existing CPs, the t-space is divided evenly among segments.
+  // Insert based on proportional position.
+  const idx = Math.round(t * existingCPs.length);
+  return Math.max(0, Math.min(existingCPs.length, idx));
 }
 
 export default DrawingCanvas;

@@ -41,6 +41,13 @@ function Toolbar({
           Move
         </button>
         <button
+          className={`tool-btn ${tool === 'bend' ? 'active' : ''}`}
+          onClick={() => onToolChange('bend')}
+          title="Bend (drag a line to curve it)"
+        >
+          Bend
+        </button>
+        <button
           className={`tool-btn ${tool === 'eraser' ? 'active' : ''}`}
           onClick={() => onToolChange('eraser')}
           title="Eraser (click a line to remove it)"

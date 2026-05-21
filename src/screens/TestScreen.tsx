@@ -115,6 +115,7 @@ function TestScreen({ onBack }: Props) {
             onAddLine={drawing.addLine}
             onRemoveLine={drawing.removeLine}
             onMovePoint={drawing.movePoint}
+            onBend={drawing.bendLine}
             locked={locked}
             boilActive={boilActive}
             successOverlay={

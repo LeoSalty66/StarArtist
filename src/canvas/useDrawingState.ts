@@ -48,6 +48,43 @@ export function useDrawingState() {
     [lines, commit],
   );
 
+  const bendLine = useCallback(
+    (lineId: string, cpIndex: number | null, position: Point) => {
+      const next = lines.map((l) => {
+        if (l.id !== lineId) return l;
+        const cps = [...(l.controlPoints ?? [])];
+        if (cpIndex !== null) {
+          cps[cpIndex] = position;
+        } else {
+          // Insert new CP. Figure out where based on closest point.
+          // Simple heuristic: insert at end if no CPs, otherwise based on position.
+          if (cps.length === 0) {
+            cps.push(position);
+          } else {
+            // Find best insert position by checking distances.
+            let bestIdx = cps.length;
+            let bestDist = Infinity;
+            for (let i = 0; i <= cps.length; i++) {
+              const prev = i === 0 ? l.a : cps[i - 1];
+              const next = i === cps.length ? l.b : cps[i];
+              const midX = (prev.x + next.x) / 2;
+              const midY = (prev.y + next.y) / 2;
+              const d = Math.hypot(position.x - midX, position.y - midY);
+              if (d < bestDist) {
+                bestDist = d;
+                bestIdx = i;
+              }
+            }
+            cps.splice(bestIdx, 0, position);
+          }
+        }
+        return { ...l, controlPoints: cps };
+      });
+      commit(next);
+    },
+    [lines, commit],
+  );
+
   const clear = useCallback(() => {
     if (lines.length === 0) return;
     commit([]);
@@ -78,6 +115,7 @@ export function useDrawingState() {
     addLine,
     removeLine,
     movePoint,
+    bendLine,
     clear,
     undo,
     redo,
