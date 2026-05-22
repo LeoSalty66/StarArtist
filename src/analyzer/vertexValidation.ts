@@ -7,28 +7,18 @@ export interface VertexValidationResult {
   isValidStar: boolean;
   message: string;
   vertices: Point[];
-  /** Adjacency: for each vertex index, the set of vertex indices it connects to. */
   adjacency: Map<number, Set<number>>;
-  /** Indices of pentagon vertices (degree 4), if found. */
   pentagonVertices: number[];
-  /** Indices of tip vertices (degree 2), if found. */
   tipVertices: number[];
-  /** Total edge count. */
   edgeCount: number;
 }
 
 /**
- * Validate a drawing as a 5-pointed star using pure vertex/adjacency analysis.
+ * Validate a drawing as a 5-pointed star using generalized vertex/adjacency analysis.
  *
- * A valid 5-pointed star has:
- * - Exactly 10 vertices
- * - 5 vertices with degree 4 (pentagon vertices)
- * - 5 vertices with degree 2 (star tips)
- * - The 5 degree-4 vertices form a cycle (each connects to exactly 2 others in the group)
- * - Each unique pair of adjacent pentagon vertices is shared by exactly one degree-4 vertex
- * - Each degree-2 vertex connects to exactly 2 degree-4 vertices
- * - Each degree-2 vertex's pair of connections is unique
- * - Exactly 15 edges total
+ * Finds any 5-cycle in the graph that can serve as the pentagon, then verifies
+ * that each pentagon edge has exactly one triangle tip connecting to both endpoints.
+ * Tips may be merged (multiple triangle roles served by one vertex).
  */
 export function vertexValidate(lines: Line[]): VertexValidationResult {
   const empty: VertexValidationResult = {
@@ -46,7 +36,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   // Step 1: Explode at corners.
   const exploded = explodeAtCorners(lines);
 
-  // Step 2: Collect all vertices (endpoints + intersections).
+  // Step 2: Collect all vertices.
   const vertices: Point[] = [];
   const findOrAdd = (p: Point): number => {
     for (let i = 0; i < vertices.length; i++) {
@@ -58,30 +48,22 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     return vertices.length - 1;
   };
 
-  // Add endpoints.
   for (const l of exploded) {
     findOrAdd(l.a);
     findOrAdd(l.b);
   }
-
-  // Add intersections.
   for (let i = 0; i < exploded.length; i++) {
     for (let j = i + 1; j < exploded.length; j++) {
       const ixs = findLineIntersections(exploded[i], exploded[j]);
-      for (const ix of ixs) {
-        findOrAdd(ix);
-      }
+      for (const ix of ixs) findOrAdd(ix);
     }
   }
 
-  // Step 3: Build adjacency by finding which vertices each line passes through.
+  // Step 3: Build adjacency.
   const adjacency: Map<number, Set<number>> = new Map();
-  for (let i = 0; i < vertices.length; i++) {
-    adjacency.set(i, new Set());
-  }
+  for (let i = 0; i < vertices.length; i++) adjacency.set(i, new Set());
 
   for (const l of exploded) {
-    // Find vertices on this line, ordered by distance along path.
     const onLine: { idx: number; dist: number }[] = [];
     for (let i = 0; i < vertices.length; i++) {
       const d = distToLine(vertices[i], l);
@@ -90,16 +72,12 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
       }
     }
     onLine.sort((a, b) => a.dist - b.dist);
-
-    // Deduplicate consecutive same vertex.
     const ordered: number[] = [];
     for (const entry of onLine) {
       if (ordered.length === 0 || ordered[ordered.length - 1] !== entry.idx) {
         ordered.push(entry.idx);
       }
     }
-
-    // Connect consecutive vertices.
     for (let k = 0; k < ordered.length - 1; k++) {
       adjacency.get(ordered[k])!.add(ordered[k + 1]);
       adjacency.get(ordered[k + 1])!.add(ordered[k]);
@@ -112,10 +90,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   for (const [v, neighbors] of adjacency) {
     for (const n of neighbors) {
       const key = Math.min(v, n) + '-' + Math.max(v, n);
-      if (!seenEdges.has(key)) {
-        seenEdges.add(key);
-        edgeCount++;
-      }
+      if (!seenEdges.has(key)) { seenEdges.add(key); edgeCount++; }
     }
   }
 
@@ -129,147 +104,223 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     edgeCount,
   };
 
-  // Step 4: Validate.
-  const vertexCount = vertices.length;
-
-  if (vertexCount < 10) {
-    result.message = `${vertexCount} vertices found. Need exactly 10.`;
+  if (vertices.length < 6) {
+    result.message = `${vertices.length} vertices. Need at least 6.`;
     return result;
   }
-  if (vertexCount > 10) {
-    result.message = `${vertexCount} vertices found. Need exactly 10 (too many).`;
+  if (vertices.length > 10) {
+    result.message = `${vertices.length} vertices. Maximum is 10.`;
     return result;
   }
 
-  // Classify by degree.
-  const degree4: number[] = [];
-  const degree2: number[] = [];
-  const otherDegrees: { idx: number; deg: number }[] = [];
+  // Step 4: Find a valid 5-cycle that can serve as the pentagon.
+  const pentCycle = findValidPentagonCycle(vertices, adjacency, seenEdges);
 
-  for (let i = 0; i < vertices.length; i++) {
-    const deg = adjacency.get(i)!.size;
-    if (deg === 4) degree4.push(i);
-    else if (deg === 2) degree2.push(i);
-    else otherDegrees.push({ idx: i, deg });
-  }
-
-  if (otherDegrees.length > 0) {
-    const desc = otherDegrees.map((o) => `vertex ${o.idx} has degree ${o.deg}`).join(', ');
-    result.message = `Invalid vertex degrees: ${desc}. Need 5×degree-4 and 5×degree-2.`;
-    return result;
-  }
-
-  if (degree4.length !== 5) {
-    result.message = `Found ${degree4.length} degree-4 vertices. Need exactly 5 (pentagon).`;
-    return result;
-  }
-
-  if (degree2.length !== 5) {
-    result.message = `Found ${degree2.length} degree-2 vertices. Need exactly 5 (tips).`;
-    return result;
-  }
-
-  // Check that the 5 degree-4 vertices form a cycle (each connects to exactly 2 others in the group).
-  const pentSet = new Set(degree4);
-  for (const pv of degree4) {
-    const neighbors = adjacency.get(pv)!;
-    let pentNeighborCount = 0;
-    for (const n of neighbors) {
-      if (pentSet.has(n)) pentNeighborCount++;
-    }
-    if (pentNeighborCount !== 2) {
-      result.message = `Pentagon vertex connects to ${pentNeighborCount} other pentagon vertices (need exactly 2).`;
-      return result;
-    }
-  }
-
-  // Check that the pentagon connections form a single cycle (not two disconnected pieces).
-  const pentCycle = traceCycle(degree4, adjacency, pentSet);
   if (!pentCycle) {
-    result.message = 'Pentagon vertices do not form a single cycle.';
+    result.message = `${vertices.length} vertices, ${edgeCount} edges. No valid pentagon cycle found.`;
     return result;
   }
 
-  // Check uniqueness of pentagon pairs: each degree-4 vertex's pair of pentagon neighbors is unique.
-  const pentPairs = new Set<string>();
-  for (const pv of degree4) {
-    const pentNeighbors = [...adjacency.get(pv)!].filter((n) => pentSet.has(n)).sort();
-    const pairKey = pentNeighbors.join('-');
-    if (pentPairs.has(pairKey)) {
-      result.message = 'Two pentagon vertices share the same pair of pentagon neighbors.';
+  const pentSet = new Set(pentCycle);
+  const tipVerts = vertices.map((_, i) => i).filter((i) => !pentSet.has(i));
+
+  // Step 5: Verify no extra edges exist.
+  // Allowed edges:
+  // - Pentagon edges: between adjacent pentagon vertices in the cycle
+  // - Triangle edges: between a pentagon vertex and a tip that forms a triangle
+  // Total allowed = 5 (pentagon) + 10 (triangle sides) = 15
+  // But with merged tips, some triangle edges collapse, reducing edge count.
+
+  // For each pentagon edge (adjacent pair in cycle), find the tip that connects to both.
+  const pentEdgeTips: Map<string, number> = new Map(); // "pentA-pentB" -> tip vertex index
+  for (let i = 0; i < 5; i++) {
+    const pA = pentCycle[i];
+    const pB = pentCycle[(i + 1) % 5];
+    const key = Math.min(pA, pB) + '-' + Math.max(pA, pB);
+
+    // Find a vertex (tip) that connects to both pA and pB
+    let foundTip: number | null = null;
+    for (const tipV of tipVerts) {
+      if (adjacency.get(tipV)!.has(pA) && adjacency.get(tipV)!.has(pB)) {
+        foundTip = tipV;
+        break;
+      }
+    }
+    // Also check if a pentagon vertex (non-adjacent) serves as tip for this edge
+    // This handles extreme merging where a pent vertex also acts as tip for non-adjacent edge
+    if (foundTip === null) {
+      for (const otherP of pentCycle) {
+        if (otherP === pA || otherP === pB) continue;
+        if (adjacency.get(otherP)!.has(pA) && adjacency.get(otherP)!.has(pB)) {
+          // This pentagon vertex connects to both, but it's not adjacent to them in the cycle
+          // so it's acting as a triangle tip for this edge
+          foundTip = otherP;
+          break;
+        }
+      }
+    }
+
+    if (foundTip === null) {
+      result.message = `No triangle tip found for pentagon edge ${pA}-${pB}.`;
       return result;
     }
-    pentPairs.add(pairKey);
+    pentEdgeTips.set(key, foundTip);
   }
 
-  // Check degree-2 vertices: each connects to exactly 2 degree-4 vertices.
-  for (const tv of degree2) {
-    const neighbors = [...adjacency.get(tv)!];
-    if (neighbors.length !== 2) {
-      result.message = `Tip vertex has ${neighbors.length} connections (need exactly 2).`;
+  // Step 6: Verify all edges are accounted for.
+  const allowedEdges = new Set<string>();
+  // Pentagon edges
+  for (let i = 0; i < 5; i++) {
+    const pA = pentCycle[i];
+    const pB = pentCycle[(i + 1) % 5];
+    allowedEdges.add(Math.min(pA, pB) + '-' + Math.max(pA, pB));
+  }
+  // Triangle edges (tip to pentagon vertex)
+  for (const [pentEdgeKey, tipV] of pentEdgeTips) {
+    const [pAStr, pBStr] = pentEdgeKey.split('-');
+    const pA = parseInt(pAStr);
+    const pB = parseInt(pBStr);
+    allowedEdges.add(Math.min(tipV, pA) + '-' + Math.max(tipV, pA));
+    allowedEdges.add(Math.min(tipV, pB) + '-' + Math.max(tipV, pB));
+  }
+
+  // Check for extra edges
+  for (const edgeKey of seenEdges) {
+    if (!allowedEdges.has(edgeKey)) {
+      result.message = `Extra edge ${edgeKey} not part of star structure.`;
       return result;
     }
-    if (!pentSet.has(neighbors[0]) || !pentSet.has(neighbors[1])) {
-      result.message = 'Tip vertex connects to a non-pentagon vertex.';
+  }
+
+  // Check all allowed edges exist
+  for (const edgeKey of allowedEdges) {
+    if (!seenEdges.has(edgeKey)) {
+      result.message = `Missing edge ${edgeKey} required for star.`;
       return result;
     }
   }
 
-  // Check uniqueness of tip connections.
-  const tipPairs = new Set<string>();
-  for (const tv of degree2) {
-    const neighbors = [...adjacency.get(tv)!].sort();
-    const pairKey = neighbors.join('-');
-    if (tipPairs.has(pairKey)) {
-      result.message = 'Two tip vertices connect to the same pair of pentagon vertices.';
-      return result;
-    }
-    tipPairs.add(pairKey);
-  }
-
-  // Check edge count (should be exactly 15).
-  if (edgeCount !== 15) {
-    result.message = `${edgeCount} edges found. A valid star has exactly 15.`;
-    return result;
-  }
-
-  // All checks pass!
   result.isValidStar = true;
-  result.pentagonVertices = degree4;
-  result.tipVertices = degree2;
+  result.pentagonVertices = pentCycle;
+  result.tipVertices = tipVerts;
   result.message = '⭐ Valid 5-pointed star!';
   return result;
 }
 
-/** Trace a cycle through vertices that are connected within a group. */
-function traceCycle(
-  group: number[],
+/**
+ * Find a 5-cycle in the graph that can serve as the pentagon.
+ * A valid pentagon cycle must also satisfy: for each edge of the cycle,
+ * there exists at least one other vertex connecting to both endpoints.
+ *
+ * Brute-force approach since graphs are small (≤10 vertices).
+ */
+function findValidPentagonCycle(
+  vertices: Point[],
   adjacency: Map<number, Set<number>>,
-  groupSet: Set<number>,
+  allEdges: Set<string>,
 ): number[] | null {
-  if (group.length === 0) return null;
+  const n = vertices.length;
+  if (n < 5) return null;
+
+  // Find all 5-cycles using DFS.
+  const cycles: number[][] = [];
+  const indices = Array.from({ length: n }, (_, i) => i);
+
+  // Generate all combinations of 5 vertices
+  for (let a = 0; a < n; a++) {
+    for (let b = a + 1; b < n; b++) {
+      for (let c = b + 1; c < n; c++) {
+        for (let d = c + 1; d < n; d++) {
+          for (let e = d + 1; e < n; e++) {
+            const group = [a, b, c, d, e];
+            const cycle = findCycleInGroup(group, adjacency);
+            if (cycle) cycles.push(cycle);
+          }
+        }
+      }
+    }
+  }
+
+  // For each cycle, check if it can be a valid pentagon
+  // (each edge has a triangle tip connecting to both endpoints).
+  for (const cycle of cycles) {
+    if (isValidPentagonCycle(cycle, vertices, adjacency)) {
+      return cycle;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Given a group of 5 vertices, determine if they form a Hamiltonian cycle
+ * (each connected to exactly 2 others in the group).
+ */
+function findCycleInGroup(group: number[], adjacency: Map<number, Set<number>>): number[] | null {
+  const groupSet = new Set(group);
+
+  // Check each vertex connects to exactly 2 others in the group
+  for (const v of group) {
+    let count = 0;
+    for (const n of adjacency.get(v)!) {
+      if (groupSet.has(n)) count++;
+    }
+    if (count !== 2) return null;
+  }
+
+  // Trace the cycle
   const visited = new Set<number>();
   const cycle: number[] = [];
   let current = group[0];
 
-  for (let step = 0; step < group.length; step++) {
+  for (let step = 0; step < 5; step++) {
     visited.add(current);
     cycle.push(current);
-    const neighbors = [...adjacency.get(current)!].filter(
+    const next = [...adjacency.get(current)!].find(
       (n) => groupSet.has(n) && !visited.has(n),
     );
-    if (neighbors.length === 0 && step < group.length - 1) return null; // Dead end
-    if (step < group.length - 1) current = neighbors[0];
+    if (next === undefined && step < 4) return null;
+    if (step < 4) current = next!;
   }
 
-  // Check that the last vertex connects back to the first.
+  // Verify last connects back to first
   if (!adjacency.get(current)!.has(cycle[0])) return null;
-  if (cycle.length !== group.length) return null;
 
   return cycle;
 }
 
-/** Explode lines at corners. */
+/**
+ * Check if a 5-cycle can serve as a valid pentagon:
+ * for each edge of the cycle, some vertex (outside or inside the cycle)
+ * connects to both endpoints.
+ */
+function isValidPentagonCycle(
+  cycle: number[],
+  vertices: Point[],
+  adjacency: Map<number, Set<number>>,
+): boolean {
+  const n = vertices.length;
+
+  for (let i = 0; i < 5; i++) {
+    const pA = cycle[i];
+    const pB = cycle[(i + 1) % 5];
+
+    let hasTip = false;
+    for (let v = 0; v < n; v++) {
+      if (v === pA || v === pB) continue;
+      if (adjacency.get(v)!.has(pA) && adjacency.get(v)!.has(pB)) {
+        hasTip = true;
+        break;
+      }
+    }
+    if (!hasTip) return false;
+  }
+
+  return true;
+}
+
+// --- Helpers ---
+
 function explodeAtCorners(lines: Line[]): Line[] {
   const result: Line[] = [];
   for (const l of lines) {
@@ -294,7 +345,6 @@ function explodeAtCorners(lines: Line[]): Line[] {
   return result;
 }
 
-/** Distance from point to a line's actual path. */
 function distToLine(p: Point, l: Line): number {
   const segs = getLineSegments(l);
   let minDist = Infinity;
@@ -305,13 +355,11 @@ function distToLine(p: Point, l: Line): number {
   return minDist;
 }
 
-/** Arc-length distance along a line from start to the projection of a point. */
 function distanceAlongLine(p: Point, l: Line): number {
   const segs = getLineSegments(l);
   let cumLen = 0;
   let bestCumDist = 0;
   let bestPerp = Infinity;
-
   for (const [s, e] of segs) {
     const segLen = Math.hypot(e.x - s.x, e.y - s.y);
     const d = distToSegment(p, s, e);
@@ -321,9 +369,7 @@ function distanceAlongLine(p: Point, l: Line): number {
       const dy = e.y - s.y;
       const lenSq = dx * dx + dy * dy;
       let t = 0;
-      if (lenSq > 0) {
-        t = Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.y - s.y) * dy) / lenSq));
-      }
+      if (lenSq > 0) t = Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.y - s.y) * dy) / lenSq));
       bestCumDist = cumLen + t * segLen;
     }
     cumLen += segLen;
