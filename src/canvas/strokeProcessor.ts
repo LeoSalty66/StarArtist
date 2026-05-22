@@ -100,15 +100,23 @@ function smooth(points: Point[], windowSize: number): Point[] {
 function detectCorners(points: Point[], angleDeg: number): Set<number> {
   const corners = new Set<number>();
   const threshold = angleDeg * Math.PI / 180;
+  const cooldownThreshold = 50 * Math.PI / 180; // Much higher threshold during cooldown
+  const cooldownDistance = 30; // pixels: how far you must travel before another corner can fire
 
   // Always mark first and last as "corners" (endpoints)
   corners.add(0);
   corners.add(points.length - 1);
 
+  let lastCornerIdx = 0;
+  let distSinceLastCorner = 0;
+
   for (let i = 1; i < points.length - 1; i++) {
     const prev = points[i - 1];
     const curr = points[i];
     const next = points[i + 1];
+
+    // Track distance traveled since last corner
+    distSinceLastCorner += Math.hypot(curr.x - prev.x, curr.y - prev.y);
 
     const angle1 = Math.atan2(curr.y - prev.y, curr.x - prev.x);
     const angle2 = Math.atan2(next.y - curr.y, next.x - curr.x);
@@ -116,8 +124,13 @@ function detectCorners(points: Point[], angleDeg: number): Set<number> {
     let diff = Math.abs(angle2 - angle1);
     if (diff > Math.PI) diff = 2 * Math.PI - diff;
 
-    if (diff > threshold) {
+    // Use higher threshold if we're in cooldown (too close to last corner)
+    const activeThreshold = distSinceLastCorner < cooldownDistance ? cooldownThreshold : threshold;
+
+    if (diff > activeThreshold) {
       corners.add(i);
+      lastCornerIdx = i;
+      distSinceLastCorner = 0;
     }
   }
 
