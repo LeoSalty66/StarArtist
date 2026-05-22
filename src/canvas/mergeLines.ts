@@ -18,7 +18,10 @@ export function mergeOverlappingLines(lines: Line[]): Line[] {
   while (merged) {
     merged = false;
     for (let i = 0; i < result.length && !merged; i++) {
+      // Skip curves — only merge straight lines.
+      if (result[i].pathPoints && result[i].pathPoints!.length > 2) continue;
       for (let j = i + 1; j < result.length && !merged; j++) {
+        if (result[j].pathPoints && result[j].pathPoints!.length > 2) continue;
         const m = tryMerge(result[i], result[j]);
         if (m) {
           // Replace i with the merged line, remove j.
