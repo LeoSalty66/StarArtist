@@ -153,9 +153,28 @@ function DrawingCanvas({
 
     if (tool === 'pen' && isDrawing) {
       rawPointsRef.current.push(raw);
-      // Check for snap at current position (for visual feedback)
-      const { point, snap: snapTarget } = resolvePoint(raw);
-      setCursor(point);
+      // Self-snap: check if near own start point (for closing loops/teardrops).
+      const startPt = rawPointsRef.current[0];
+      const distToStart = Math.hypot(raw.x - startPt.x, raw.y - startPt.y);
+      const SELF_SNAP_RADIUS = 11;
+      // Only allow self-snap if we've drawn far enough (avoid triggering at the very beginning).
+      const pathLen = rawPointsRef.current.length;
+
+      let snapPoint = raw;
+      let snapTarget: SnapTarget | null = null;
+
+      if (distToStart <= SELF_SNAP_RADIUS && pathLen > 20) {
+        // Snap to own start
+        snapPoint = startPt;
+        snapTarget = { point: startPt, kind: 'endpoint' };
+      } else {
+        // Normal snap to other lines/endpoints
+        const resolved = resolvePoint(raw);
+        snapPoint = resolved.point;
+        snapTarget = resolved.snap;
+      }
+
+      setCursor(snapPoint);
       setSnap(snapTarget);
       // Throttle preview updates
       if (rawPointsRef.current.length % 3 === 0) {
@@ -184,8 +203,16 @@ function DrawingCanvas({
     if (tool === 'pen' && isDrawing) {
       const raw = getSvgPoint(e.clientX, e.clientY);
       if (raw) {
-        const { point } = resolvePoint(raw);
-        rawPointsRef.current.push(point);
+        // Self-snap on release: if near own start, close the loop.
+        const startPt = rawPointsRef.current[0];
+        const distToStart = Math.hypot(raw.x - startPt.x, raw.y - startPt.y);
+        const pathLen = rawPointsRef.current.length;
+        if (distToStart <= 11 && pathLen > 20) {
+          rawPointsRef.current.push(startPt);
+        } else {
+          const { point } = resolvePoint(raw);
+          rawPointsRef.current.push(point);
+        }
       }
 
       // Process the raw stroke
