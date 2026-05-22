@@ -59,8 +59,10 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     }
   }
 
-  // Step 3: Build adjacency.
+  // Step 3: Build adjacency and count edges.
+  // Use a multiset for adjacency to track how many edges connect each pair.
   const adjacency: Map<number, Set<number>> = new Map();
+  const edgeMultiplicity: Map<string, number> = new Map(); // "min-max" -> count
   for (let i = 0; i < vertices.length; i++) adjacency.set(i, new Set());
 
   for (const l of exploded) {
@@ -79,19 +81,21 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
       }
     }
     for (let k = 0; k < ordered.length - 1; k++) {
-      adjacency.get(ordered[k])!.add(ordered[k + 1]);
-      adjacency.get(ordered[k + 1])!.add(ordered[k]);
+      const a = ordered[k];
+      const b = ordered[k + 1];
+      adjacency.get(a)!.add(b);
+      adjacency.get(b)!.add(a);
+      const key = Math.min(a, b) + '-' + Math.max(a, b);
+      edgeMultiplicity.set(key, (edgeMultiplicity.get(key) ?? 0) + 1);
     }
   }
 
-  // Count edges.
+  // Count edges (including multi-edges).
   let edgeCount = 0;
   const seenEdges = new Set<string>();
-  for (const [v, neighbors] of adjacency) {
-    for (const n of neighbors) {
-      const key = Math.min(v, n) + '-' + Math.max(v, n);
-      if (!seenEdges.has(key)) { seenEdges.add(key); edgeCount++; }
-    }
+  for (const [key, count] of edgeMultiplicity) {
+    seenEdges.add(key);
+    edgeCount += count;
   }
 
   const result: VertexValidationResult = {
@@ -163,34 +167,35 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     result.message = `Pentagon found! ${5 - missingTips}/5 triangles complete.`;
     return result;
   }
-  const allowedEdges = new Set<string>();
+  // Build the set of allowed vertex pairs (regardless of multiplicity).
+  const allowedPairs = new Set<string>();
   // Pentagon edges
   for (let i = 0; i < 5; i++) {
     const pA = pentCycle[i];
     const pB = pentCycle[(i + 1) % 5];
-    allowedEdges.add(Math.min(pA, pB) + '-' + Math.max(pA, pB));
+    allowedPairs.add(Math.min(pA, pB) + '-' + Math.max(pA, pB));
   }
-  // Triangle edges (tip to pentagon vertex)
+  // Triangle edges (tip to each of its two pentagon vertices)
   for (const [pentEdgeKey, tipV] of pentEdgeTips) {
     const [pAStr, pBStr] = pentEdgeKey.split('-');
     const pA = parseInt(pAStr);
     const pB = parseInt(pBStr);
-    allowedEdges.add(Math.min(tipV, pA) + '-' + Math.max(tipV, pA));
-    allowedEdges.add(Math.min(tipV, pB) + '-' + Math.max(tipV, pB));
+    allowedPairs.add(Math.min(tipV, pA) + '-' + Math.max(tipV, pA));
+    allowedPairs.add(Math.min(tipV, pB) + '-' + Math.max(tipV, pB));
   }
 
-  // Check for extra edges
-  for (const edgeKey of seenEdges) {
-    if (!allowedEdges.has(edgeKey)) {
-      result.message = `Extra edge ${edgeKey} not part of star structure.`;
+  // Check: no edge exists between a pair that isn't allowed.
+  for (const key of seenEdges) {
+    if (!allowedPairs.has(key)) {
+      result.message = `Extra edge ${key} not part of star structure.`;
       return result;
     }
   }
 
-  // Check all allowed edges exist
-  for (const edgeKey of allowedEdges) {
-    if (!seenEdges.has(edgeKey)) {
-      result.message = `Missing edge ${edgeKey} required for star.`;
+  // Check: all allowed pairs have at least one edge.
+  for (const key of allowedPairs) {
+    if (!seenEdges.has(key)) {
+      result.message = `Missing connection for star.`;
       return result;
     }
   }
