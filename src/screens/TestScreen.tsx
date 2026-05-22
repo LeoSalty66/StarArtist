@@ -156,7 +156,7 @@ function TestScreen({ onBack }: Props) {
         </span>
         {!locked && (
           <span className="analyzer-detail">
-            Vertices: {vResult.vertices.length}/10 | Edges: {vResult.edgeCount}/15
+            Vertices: {vResult.vertices.length} | Edges: {vResult.edgeCount}
           </span>
         )}
       </div>

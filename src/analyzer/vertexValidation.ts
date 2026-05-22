@@ -253,40 +253,64 @@ function findValidPentagonCycle(
 }
 
 /**
- * Given a group of 5 vertices, determine if they form a Hamiltonian cycle
- * (each connected to exactly 2 others in the group).
+ * Given a group of 5 vertices, find a Hamiltonian cycle among them
+ * (a way to visit all 5 exactly once and return to start, using only
+ * edges that exist in the adjacency).
+ * Doesn't require exactly degree 2 — allows extra edges within the group.
  */
 function findCycleInGroup(group: number[], adjacency: Map<number, Set<number>>): number[] | null {
   const groupSet = new Set(group);
 
-  // Check each vertex connects to exactly 2 others in the group
+  // Build the subgraph adjacency restricted to this group.
+  const subAdj: Map<number, number[]> = new Map();
   for (const v of group) {
-    let count = 0;
-    for (const n of adjacency.get(v)!) {
-      if (groupSet.has(n)) count++;
+    const neighbors = [...adjacency.get(v)!].filter((n) => groupSet.has(n));
+    if (neighbors.length < 2) return null; // Can't be in a cycle with fewer than 2 connections
+    subAdj.set(v, neighbors);
+  }
+
+  // Try all permutations of the group to find a valid cycle.
+  // With only 5 vertices, there are 5!/2 = 60 distinct cycles to check (manageable).
+  const perms = permutations(group);
+  for (const perm of perms) {
+    let valid = true;
+    for (let i = 0; i < 5; i++) {
+      const curr = perm[i];
+      const next = perm[(i + 1) % 5];
+      if (!adjacency.get(curr)!.has(next)) {
+        valid = false;
+        break;
+      }
     }
-    if (count !== 2) return null;
+    if (valid) return perm;
   }
 
-  // Trace the cycle
-  const visited = new Set<number>();
-  const cycle: number[] = [];
-  let current = group[0];
+  return null;
+}
 
-  for (let step = 0; step < 5; step++) {
-    visited.add(current);
-    cycle.push(current);
-    const next = [...adjacency.get(current)!].find(
-      (n) => groupSet.has(n) && !visited.has(n),
-    );
-    if (next === undefined && step < 4) return null;
-    if (step < 4) current = next!;
+/** Generate all unique cycle permutations of an array (fix first element, permute rest). */
+function permutations(arr: number[]): number[][] {
+  if (arr.length <= 1) return [arr];
+  const results: number[][] = [];
+  // Fix first element to avoid duplicate cycles (rotations)
+  const first = arr[0];
+  const rest = arr.slice(1);
+  permuteHelper(rest, [], (perm) => {
+    results.push([first, ...perm]);
+  });
+  return results;
+}
+
+function permuteHelper(remaining: number[], current: number[], emit: (p: number[]) => void): void {
+  if (remaining.length === 0) {
+    emit(current);
+    return;
   }
-
-  // Verify last connects back to first
-  if (!adjacency.get(current)!.has(cycle[0])) return null;
-
-  return cycle;
+  for (let i = 0; i < remaining.length; i++) {
+    const next = [...current, remaining[i]];
+    const rest = [...remaining.slice(0, i), ...remaining.slice(i + 1)];
+    permuteHelper(rest, next, emit);
+  }
 }
 
 /**
