@@ -124,50 +124,45 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   const pentSet = new Set(pentCycle);
   const tipVerts = vertices.map((_, i) => i).filter((i) => !pentSet.has(i));
 
-  // Step 5: Verify no extra edges exist.
-  // Allowed edges:
-  // - Pentagon edges: between adjacent pentagon vertices in the cycle
-  // - Triangle edges: between a pentagon vertex and a tip that forms a triangle
-  // Total allowed = 5 (pentagon) + 10 (triangle sides) = 15
-  // But with merged tips, some triangle edges collapse, reducing edge count.
-
-  // For each pentagon edge (adjacent pair in cycle), find the tip that connects to both.
-  const pentEdgeTips: Map<string, number> = new Map(); // "pentA-pentB" -> tip vertex index
+  // For each pentagon edge, find the tip that connects to both endpoints.
+  const pentEdgeTips: Map<string, number> = new Map();
+  let missingTips = 0;
   for (let i = 0; i < 5; i++) {
     const pA = pentCycle[i];
     const pB = pentCycle[(i + 1) % 5];
     const key = Math.min(pA, pB) + '-' + Math.max(pA, pB);
 
-    // Find a vertex (tip) that connects to both pA and pB
     let foundTip: number | null = null;
+    // Check non-pentagon vertices first
     for (const tipV of tipVerts) {
       if (adjacency.get(tipV)!.has(pA) && adjacency.get(tipV)!.has(pB)) {
         foundTip = tipV;
         break;
       }
     }
-    // Also check if a pentagon vertex (non-adjacent) serves as tip for this edge
-    // This handles extreme merging where a pent vertex also acts as tip for non-adjacent edge
+    // Check non-adjacent pentagon vertices (acting as merged tips)
     if (foundTip === null) {
       for (const otherP of pentCycle) {
         if (otherP === pA || otherP === pB) continue;
         if (adjacency.get(otherP)!.has(pA) && adjacency.get(otherP)!.has(pB)) {
-          // This pentagon vertex connects to both, but it's not adjacent to them in the cycle
-          // so it's acting as a triangle tip for this edge
           foundTip = otherP;
           break;
         }
       }
     }
 
-    if (foundTip === null) {
-      result.message = `No triangle tip found for pentagon edge ${pA}-${pB}.`;
-      return result;
+    if (foundTip !== null) {
+      pentEdgeTips.set(key, foundTip);
+    } else {
+      missingTips++;
     }
-    pentEdgeTips.set(key, foundTip);
   }
 
-  // Step 6: Verify all edges are accounted for.
+  if (missingTips > 0) {
+    result.pentagonVertices = pentCycle;
+    result.message = `Pentagon found! ${5 - missingTips}/5 triangles complete.`;
+    return result;
+  }
   const allowedEdges = new Set<string>();
   // Pentagon edges
   for (let i = 0; i < 5; i++) {
@@ -209,24 +204,21 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
 
 /**
  * Find a 5-cycle in the graph that can serve as the pentagon.
- * A valid pentagon cycle must also satisfy: for each edge of the cycle,
- * there exists at least one other vertex connecting to both endpoints.
- *
- * Brute-force approach since graphs are small (≤10 vertices).
+ * Just needs to be a valid cycle - doesn't require all tips to exist yet.
  */
 function findValidPentagonCycle(
   vertices: Point[],
   adjacency: Map<number, Set<number>>,
-  allEdges: Set<string>,
+  _allEdges: Set<string>,
 ): number[] | null {
   const n = vertices.length;
   if (n < 5) return null;
 
-  // Find all 5-cycles using DFS.
+  // Find all 5-cycles, then pick the best one (the one with the most tips already present).
   const cycles: number[][] = [];
-  const indices = Array.from({ length: n }, (_, i) => i);
 
   // Generate all combinations of 5 vertices
+  const indices = Array.from({ length: n }, (_, i) => i);
   for (let a = 0; a < n; a++) {
     for (let b = a + 1; b < n; b++) {
       for (let c = b + 1; c < n; c++) {
@@ -241,15 +233,33 @@ function findValidPentagonCycle(
     }
   }
 
-  // For each cycle, check if it can be a valid pentagon
-  // (each edge has a triangle tip connecting to both endpoints).
+  if (cycles.length === 0) return null;
+
+  // Prefer cycles that have the most triangle tips present.
+  // This handles cases where multiple 5-cycles exist in the graph.
+  let bestCycle = cycles[0];
+  let bestTipCount = 0;
+
   for (const cycle of cycles) {
-    if (isValidPentagonCycle(cycle, vertices, adjacency)) {
-      return cycle;
+    let tipCount = 0;
+    for (let i = 0; i < 5; i++) {
+      const pA = cycle[i];
+      const pB = cycle[(i + 1) % 5];
+      for (let v = 0; v < n; v++) {
+        if (v === pA || v === pB) continue;
+        if (adjacency.get(v)!.has(pA) && adjacency.get(v)!.has(pB)) {
+          tipCount++;
+          break;
+        }
+      }
+    }
+    if (tipCount > bestTipCount) {
+      bestTipCount = tipCount;
+      bestCycle = cycle;
     }
   }
 
-  return null;
+  return bestCycle;
 }
 
 /**
@@ -311,36 +321,6 @@ function permuteHelper(remaining: number[], current: number[], emit: (p: number[
     const rest = [...remaining.slice(0, i), ...remaining.slice(i + 1)];
     permuteHelper(rest, next, emit);
   }
-}
-
-/**
- * Check if a 5-cycle can serve as a valid pentagon:
- * for each edge of the cycle, some vertex (outside or inside the cycle)
- * connects to both endpoints.
- */
-function isValidPentagonCycle(
-  cycle: number[],
-  vertices: Point[],
-  adjacency: Map<number, Set<number>>,
-): boolean {
-  const n = vertices.length;
-
-  for (let i = 0; i < 5; i++) {
-    const pA = cycle[i];
-    const pB = cycle[(i + 1) % 5];
-
-    let hasTip = false;
-    for (let v = 0; v < n; v++) {
-      if (v === pA || v === pB) continue;
-      if (adjacency.get(v)!.has(pA) && adjacency.get(v)!.has(pB)) {
-        hasTip = true;
-        break;
-      }
-    }
-    if (!hasTip) return false;
-  }
-
-  return true;
 }
 
 // --- Helpers ---
