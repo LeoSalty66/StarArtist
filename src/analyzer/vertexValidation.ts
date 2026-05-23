@@ -188,79 +188,110 @@ function validateWithCycle(
   edgeMultiplicity: Map<string, number>,
 ): CycleValidation {
   const pentSet = new Set(pentCycle);
-  const tipVerts = vertices.map((_, i) => i).filter((i) => !pentSet.has(i));
+  const n = vertices.length;
 
-  // For each pentagon edge, find the tip.
-  const pentEdgeTips: Map<string, number> = new Map();
-  let missingTips = 0;
+  // For each pentagon edge, find ALL candidate tips (vertices connecting to both endpoints).
+  const candidates: number[][] = []; // candidates[i] = list of vertex indices that could serve edge i
   for (let i = 0; i < 5; i++) {
     const pA = pentCycle[i];
     const pB = pentCycle[(i + 1) % 5];
-    const key = Math.min(pA, pB) + '-' + Math.max(pA, pB);
-
-    let foundTip: number | null = null;
-    for (const tipV of tipVerts) {
-      if (adjacency.get(tipV)!.has(pA) && adjacency.get(tipV)!.has(pB)) {
-        foundTip = tipV;
-        break;
+    const cands: number[] = [];
+    for (let v = 0; v < n; v++) {
+      if (v === pA || v === pB) continue;
+      if (adjacency.get(v)!.has(pA) && adjacency.get(v)!.has(pB)) {
+        cands.push(v);
       }
     }
-    if (foundTip === null) {
-      for (const otherP of pentCycle) {
-        if (otherP === pA || otherP === pB) continue;
-        if (adjacency.get(otherP)!.has(pA) && adjacency.get(otherP)!.has(pB)) {
-          foundTip = otherP;
-          break;
-        }
-      }
-    }
-    if (foundTip !== null) {
-      pentEdgeTips.set(key, foundTip);
-    } else {
-      missingTips++;
-    }
+    candidates.push(cands);
   }
 
-  if (missingTips > 0) {
-    return { valid: false, tipsFound: 5 - missingTips, failReason: 'missing tips' };
-  }
-
-  // Build REQUIRED pairs strictly from the star structure.
-  // Each pair gets a required multiplicity count.
-  const requiredPairs: Map<string, number> = new Map();
-  const addRequired = (a: number, b: number) => {
-    const key = Math.min(a, b) + '-' + Math.max(a, b);
-    requiredPairs.set(key, (requiredPairs.get(key) ?? 0) + 1);
-  };
-
-  // Pentagon edges: exactly 1 each
+  // Check if all edges have at least one candidate.
   for (let i = 0; i < 5; i++) {
-    addRequired(pentCycle[i], pentCycle[(i + 1) % 5]);
-  }
-  // Triangle edges: for each pentagon edge, tip connects to both endpoints (1 each)
-  for (const [pentEdgeKey, tipV] of pentEdgeTips) {
-    const [pAStr, pBStr] = pentEdgeKey.split('-');
-    addRequired(tipV, parseInt(pAStr));
-    addRequired(tipV, parseInt(pBStr));
-  }
-
-  // Now check: the actual edge multiplicity must match the required exactly.
-  // Extra edges (pairs not required, or higher multiplicity than required) → reject.
-  // Missing edges (required pairs not present or lower multiplicity) → reject.
-  for (const [key, actualCount] of edgeMultiplicity) {
-    const requiredCount = requiredPairs.get(key) ?? 0;
-    if (actualCount > requiredCount) {
-      return { valid: false, tipsFound: 5, failReason: `extra edge ${key} (have ${actualCount}, need ${requiredCount})` };
-    }
-  }
-  for (const [key, requiredCount] of requiredPairs) {
-    const actualCount = edgeMultiplicity.get(key) ?? 0;
-    if (actualCount < requiredCount) {
-      return { valid: false, tipsFound: 5, failReason: `missing edge ${key} (have ${actualCount}, need ${requiredCount})` };
+    if (candidates[i].length === 0) {
+      return { valid: false, tipsFound: 5 - candidates.filter(c => c.length === 0).length, failReason: 'missing tip candidates' };
     }
   }
 
-  return { valid: true, tipsFound: 5, failReason: '' };
+  // Try all valid tip assignments using backtracking.
+  const assignment: number[] = new Array(5).fill(-1);
+  const validAssignment = backtrackAssign(0, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices);
+
+  if (validAssignment) {
+    return { valid: true, tipsFound: 5, failReason: '' };
+  }
+
+  return { valid: false, tipsFound: 5, failReason: 'no valid tip assignment found' };
+}
+
+/**
+ * Backtracking tip assignment: try each candidate for each pentagon edge,
+ * and for each complete assignment, check if all edges are accounted for.
+ */
+function backtrackAssign(
+  edgeIdx: number,
+  assignment: number[],
+  candidates: number[][],
+  pentCycle: number[],
+  adjacency: Map<number, Set<number>>,
+  seenEdges: Set<string>,
+  edgeMultiplicity: Map<string, number>,
+  vertices: Point[],
+): boolean {
+  if (edgeIdx === 5) {
+    // Complete assignment: validate it.
+    return checkAssignment(assignment, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices);
+  }
+
+  for (const cand of candidates[edgeIdx]) {
+    assignment[edgeIdx] = cand;
+    if (backtrackAssign(edgeIdx + 1, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices)) {
+      return true;
+    }
+  }
+  assignment[edgeIdx] = -1;
+  return false;
+}
+
+/**
+ * Check if a complete tip assignment produces a valid star.
+ * All edges in the graph must be accounted for by pentagon edges + tip edges.
+ */
+function checkAssignment(
+  assignment: number[],
+  pentCycle: number[],
+  adjacency: Map<number, Set<number>>,
+  seenEdges: Set<string>,
+  edgeMultiplicity: Map<string, number>,
+  vertices: Point[],
+): boolean {
+  // Build required edges from the assignment.
+  const requiredPairs = new Set<string>();
+
+  // Pentagon edges
+  for (let i = 0; i < 5; i++) {
+    const pA = pentCycle[i];
+    const pB = pentCycle[(i + 1) % 5];
+    requiredPairs.add(Math.min(pA, pB) + '-' + Math.max(pA, pB));
+  }
+
+  // Triangle edges from assignment
+  for (let i = 0; i < 5; i++) {
+    const tipV = assignment[i];
+    const pA = pentCycle[i];
+    const pB = pentCycle[(i + 1) % 5];
+    requiredPairs.add(Math.min(tipV, pA) + '-' + Math.max(tipV, pA));
+    requiredPairs.add(Math.min(tipV, pB) + '-' + Math.max(tipV, pB));
+  }
+
+  // Check: every actual edge must be in required, and every required must exist.
+  for (const key of seenEdges) {
+    if (!requiredPairs.has(key)) return false;
+  }
+  for (const key of requiredPairs) {
+    if (!seenEdges.has(key)) return false;
+  }
+
+  return true;
 }
 
 /**
