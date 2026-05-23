@@ -151,7 +151,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   let bestCycle = allCycles[0];
 
   for (const pentCycle of allCycles) {
-    const validation = validateWithCycle(pentCycle, vertices, adjacency, seenEdges);
+    const validation = validateWithCycle(pentCycle, vertices, adjacency, seenEdges, edgeMultiplicity);
     if (validation.valid) {
       result.isValidStar = true;
       result.pentagonVertices = pentCycle;
@@ -182,6 +182,7 @@ function validateWithCycle(
   vertices: Point[],
   adjacency: Map<number, Set<number>>,
   seenEdges: Set<string>,
+  edgeMultiplicity: Map<string, number>,
 ): CycleValidation {
   const pentSet = new Set(pentCycle);
   const tipVerts = vertices.map((_, i) => i).filter((i) => !pentSet.has(i));
@@ -240,26 +241,19 @@ function validateWithCycle(
     addRequired(tipV, parseInt(pBStr));
   }
 
-  // Now check: the actual edge set must have AT LEAST the required multiplicity
-  // for each required pair, and NO pairs that aren't required at all.
-  const actualPairs: Map<string, number> = new Map();
-  for (const key of seenEdges) {
-    // edgeMultiplicity was computed earlier but seenEdges is just the set of keys.
-    // We need to count from seenEdges. Actually seenEdges is derived from edgeMultiplicity.
-    // For simplicity, just check existence (1+).
-    actualPairs.set(key, 1);
-  }
-
-  // Check no extra pairs
-  for (const key of seenEdges) {
-    if (!requiredPairs.has(key)) {
-      return { valid: false, tipsFound: 5, failReason: `extra edge ${key}` };
+  // Now check: the actual edge multiplicity must match the required exactly.
+  // Extra edges (pairs not required, or higher multiplicity than required) → reject.
+  // Missing edges (required pairs not present or lower multiplicity) → reject.
+  for (const [key, actualCount] of edgeMultiplicity) {
+    const requiredCount = requiredPairs.get(key) ?? 0;
+    if (actualCount > requiredCount) {
+      return { valid: false, tipsFound: 5, failReason: `extra edge ${key} (have ${actualCount}, need ${requiredCount})` };
     }
   }
-  // Check all required pairs exist
-  for (const [key] of requiredPairs) {
-    if (!seenEdges.has(key)) {
-      return { valid: false, tipsFound: 5, failReason: `missing edge ${key}` };
+  for (const [key, requiredCount] of requiredPairs) {
+    const actualCount = edgeMultiplicity.get(key) ?? 0;
+    if (actualCount < requiredCount) {
+      return { valid: false, tipsFound: 5, failReason: `missing edge ${key} (have ${actualCount}, need ${requiredCount})` };
     }
   }
 
