@@ -146,18 +146,55 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     return result;
   }
 
-  // Step 4: Find a valid 5-cycle that can serve as the pentagon.
-  const pentCycle = findValidPentagonCycle(vertices, adjacency, seenEdges);
+  // Step 4: Find ALL valid 5-cycles and try each one as the pentagon.
+  const allCycles = findAllPentagonCycles(vertices, adjacency);
 
-  if (!pentCycle) {
+  if (allCycles.length === 0) {
     result.message = `${vertices.length} vertices, ${edgeCount} edges. No valid pentagon cycle found.`;
     return result;
   }
 
+  // Try each cycle: if any produces a fully valid star, accept it.
+  let bestProgress = 0;
+  let bestCycle = allCycles[0];
+
+  for (const pentCycle of allCycles) {
+    const validation = validateWithCycle(pentCycle, vertices, adjacency, seenEdges);
+    if (validation.valid) {
+      result.isValidStar = true;
+      result.pentagonVertices = pentCycle;
+      result.tipVertices = vertices.map((_, i) => i).filter((i) => !new Set(pentCycle).has(i));
+      result.message = '⭐ Valid 5-pointed star!';
+      return result;
+    }
+    if (validation.tipsFound > bestProgress) {
+      bestProgress = validation.tipsFound;
+      bestCycle = pentCycle;
+    }
+  }
+
+  // No cycle worked fully. Show progress from the best one.
+  result.pentagonVertices = bestCycle;
+  result.message = `Pentagon found! ${bestProgress}/5 triangles complete.`;
+  return result;
+}
+
+interface CycleValidation {
+  valid: boolean;
+  tipsFound: number;
+  failReason: string;
+}
+
+function validateWithCycle(
+  pentCycle: number[],
+  vertices: Point[],
+  adjacency: Map<number, Set<number>>,
+  seenEdges: Set<string>,
+): CycleValidation {
   const pentSet = new Set(pentCycle);
   const tipVerts = vertices.map((_, i) => i).filter((i) => !pentSet.has(i));
 
-  // For each pentagon edge, find the tip that connects to both endpoints.
+  // For each pentagon edge, find the tip.
   const pentEdgeTips: Map<string, number> = new Map();
   let missingTips = 0;
   for (let i = 0; i < 5; i++) {
@@ -166,14 +203,12 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     const key = Math.min(pA, pB) + '-' + Math.max(pA, pB);
 
     let foundTip: number | null = null;
-    // Check non-pentagon vertices first
     for (const tipV of tipVerts) {
       if (adjacency.get(tipV)!.has(pA) && adjacency.get(tipV)!.has(pB)) {
         foundTip = tipV;
         break;
       }
     }
-    // Check non-adjacent pentagon vertices (acting as merged tips)
     if (foundTip === null) {
       for (const otherP of pentCycle) {
         if (otherP === pA || otherP === pB) continue;
@@ -183,7 +218,6 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
         }
       }
     }
-
     if (foundTip !== null) {
       pentEdgeTips.set(key, foundTip);
     } else {
@@ -192,19 +226,16 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   }
 
   if (missingTips > 0) {
-    result.pentagonVertices = pentCycle;
-    result.message = `Pentagon found! ${5 - missingTips}/5 triangles complete.`;
-    return result;
+    return { valid: false, tipsFound: 5 - missingTips, failReason: 'missing tips' };
   }
-  // Build the set of allowed vertex pairs (regardless of multiplicity).
+
+  // Build allowed pairs and check edges.
   const allowedPairs = new Set<string>();
-  // Pentagon edges
   for (let i = 0; i < 5; i++) {
     const pA = pentCycle[i];
     const pB = pentCycle[(i + 1) % 5];
     allowedPairs.add(Math.min(pA, pB) + '-' + Math.max(pA, pB));
   }
-  // Triangle edges (tip to each of its two pentagon vertices)
   for (const [pentEdgeKey, tipV] of pentEdgeTips) {
     const [pAStr, pBStr] = pentEdgeKey.split('-');
     const pA = parseInt(pAStr);
@@ -213,46 +244,32 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     allowedPairs.add(Math.min(tipV, pB) + '-' + Math.max(tipV, pB));
   }
 
-  // Check: no edge exists between a pair that isn't allowed.
   for (const key of seenEdges) {
     if (!allowedPairs.has(key)) {
-      result.message = `Extra edge ${key} not part of star structure.`;
-      return result;
+      return { valid: false, tipsFound: 5, failReason: `extra edge ${key}` };
     }
   }
-
-  // Check: all allowed pairs have at least one edge.
   for (const key of allowedPairs) {
     if (!seenEdges.has(key)) {
-      result.message = `Missing connection for star.`;
-      return result;
+      return { valid: false, tipsFound: 5, failReason: `missing edge ${key}` };
     }
   }
 
-  result.isValidStar = true;
-  result.pentagonVertices = pentCycle;
-  result.tipVertices = tipVerts;
-  result.message = '⭐ Valid 5-pointed star!';
-  return result;
+  return { valid: true, tipsFound: 5, failReason: '' };
 }
 
 /**
- * Find a 5-cycle in the graph that can serve as the pentagon.
- * Just needs to be a valid cycle - doesn't require all tips to exist yet.
+ * Find ALL 5-cycles in the graph that could serve as the pentagon.
  */
-function findValidPentagonCycle(
+function findAllPentagonCycles(
   vertices: Point[],
   adjacency: Map<number, Set<number>>,
-  _allEdges: Set<string>,
-): number[] | null {
+): number[][] {
   const n = vertices.length;
-  if (n < 5) return null;
+  if (n < 5) return [];
 
-  // Find all 5-cycles, then pick the best one (the one with the most tips already present).
   const cycles: number[][] = [];
 
-  // Generate all combinations of 5 vertices
-  const indices = Array.from({ length: n }, (_, i) => i);
   for (let a = 0; a < n; a++) {
     for (let b = a + 1; b < n; b++) {
       for (let c = b + 1; c < n; c++) {
@@ -267,33 +284,7 @@ function findValidPentagonCycle(
     }
   }
 
-  if (cycles.length === 0) return null;
-
-  // Prefer cycles that have the most triangle tips present.
-  // This handles cases where multiple 5-cycles exist in the graph.
-  let bestCycle = cycles[0];
-  let bestTipCount = 0;
-
-  for (const cycle of cycles) {
-    let tipCount = 0;
-    for (let i = 0; i < 5; i++) {
-      const pA = cycle[i];
-      const pB = cycle[(i + 1) % 5];
-      for (let v = 0; v < n; v++) {
-        if (v === pA || v === pB) continue;
-        if (adjacency.get(v)!.has(pA) && adjacency.get(v)!.has(pB)) {
-          tipCount++;
-          break;
-        }
-      }
-    }
-    if (tipCount > bestTipCount) {
-      bestTipCount = tipCount;
-      bestCycle = cycle;
-    }
-  }
-
-  return bestCycle;
+  return cycles;
 }
 
 /**
