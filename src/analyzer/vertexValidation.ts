@@ -295,37 +295,9 @@ function checkAssignment(
     if (!seenEdges.has(key)) return false;
   }
 
-  // Check: no tip vertex is inside the pentagon (rejects inward-pointing triangles).
-  // Only check non-merged tips (those serving a single edge).
-  // Merged tips serving multiple edges can't be geometrically "outside" all of them
-  // simultaneously for non-convex pentagons, so skip them.
-  const pentPoints = pentCycle.map((i) => vertices[i]);
-  const centroid: Point = {
-    x: pentPoints.reduce((s, p) => s + p.x, 0) / 5,
-    y: pentPoints.reduce((s, p) => s + p.y, 0) / 5,
-  };
-
-  // Count how many edges each tip serves
-  const tipEdgeCount = new Map<number, number>();
-  for (let i = 0; i < 5; i++) {
-    const tipV = assignment[i];
-    tipEdgeCount.set(tipV, (tipEdgeCount.get(tipV) ?? 0) + 1);
-  }
-
-  for (let i = 0; i < 5; i++) {
-    const tipV = assignment[i];
-    // Only check tips that serve exactly 1 edge (non-merged)
-    if ((tipEdgeCount.get(tipV) ?? 0) > 1) continue;
-    const tipPt = vertices[tipV];
-    const pA = vertices[pentCycle[i]];
-    const pB = vertices[pentCycle[(i + 1) % 5]];
-    const edgeDx = pB.x - pA.x;
-    const edgeDy = pB.y - pA.y;
-    const crossTip = edgeDx * (tipPt.y - pA.y) - edgeDy * (tipPt.x - pA.x);
-    const crossCentroid = edgeDx * (centroid.y - pA.y) - edgeDy * (centroid.x - pA.x);
-    // Same sign = same side = tip is inside = invalid
-    if (crossTip * crossCentroid > 0) return false;
-  }
+  // Note: inside-the-pentagon check disabled for now.
+  // The centroid-based heuristic produces false rejections with non-convex pentagons
+  // and curved lines. Will be replaced with proper boundary-based check later.
 
   return true;
 }
