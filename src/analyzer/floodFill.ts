@@ -52,9 +52,11 @@ export function generateFillOverlays(
   const pentSeed = findValidSeed(boundaryData, pentCenter);
   debugLines.push(`Pentagon seed: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
   let pentDataUrl = '';
+  let pentFilledSet: Set<number> = new Set();
   if (pentSeed) {
     const { dataUrl, filledIndices } = doFloodFill(boundaryData, pentSeed, 'rgba(126, 200, 227, 0.3)');
     pentDataUrl = dataUrl;
+    pentFilledSet = new Set(filledIndices);
     // Mark filled pixels as boundary so triangles don't fill into pentagon.
     markAsBoundary(boundaryData, filledIndices);
     debugLines.push(`Pentagon fill: SUCCESS (${filledIndices.length} pixels)`);
@@ -70,12 +72,13 @@ export function generateFillOverlays(
     const triCenter = centroid(triPoints);
     debugLines.push(`\nTRIANGLE ${i} vertices: [${triVerts.join(', ')}]`);
     debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
-    const triSeed = findValidSeed(boundaryData, triCenter);
+
+    // Find a seed that produces a fill ADJACENT to the pentagon.
+    const triSeed = findTriangleSeed(boundaryData, triCenter, pentFilledSet);
     debugLines.push(`  seed: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
     if (triSeed) {
       const { dataUrl, filledIndices } = doFloodFill(boundaryData, triSeed, 'rgba(176, 136, 249, 0.2)');
       triDataUrls.push(dataUrl);
-      // Mark this triangle's pixels as boundary so other triangles can't overlap.
       markAsBoundary(boundaryData, filledIndices);
       debugLines.push(`  fill: SUCCESS (${filledIndices.length} pixels)`);
     } else {
@@ -92,6 +95,84 @@ function markAsBoundary(data: ImageData, indices: number[]): void {
   for (const idx of indices) {
     data.data[idx * 4 + 3] = 255;
   }
+}
+
+/**
+ * Find a seed for a triangle that produces a bounded fill ADJACENT to the pentagon.
+ * A fill is adjacent to the pentagon if any of its border pixels neighbor a pentagon pixel.
+ */
+function findTriangleSeed(boundaryData: ImageData, center: Point, pentFilledSet: Set<number>): Point | null {
+  const w = boundaryData.width;
+  const h = boundaryData.height;
+
+  const candidates: Point[] = [center];
+  for (let r = 2; r < 150; r += 2) {
+    for (let angle = 0; angle < 360; angle += 10) {
+      const rad = angle * Math.PI / 180;
+      candidates.push({ x: center.x + r * Math.cos(rad), y: center.y + r * Math.sin(rad) });
+    }
+  }
+
+  for (const c of candidates) {
+    const cx = Math.round(c.x);
+    const cy = Math.round(c.y);
+    if (cx < 2 || cx >= w - 2 || cy < 2 || cy >= h - 2) continue;
+    if (boundaryData.data[((cy * w + cx) * 4) + 3] > 50) continue;
+
+    // Quick bounded check
+    const fillResult = quickBoundedFill(boundaryData, cx, cy);
+    if (!fillResult) continue;
+
+    // Check adjacency: does any pixel in this fill border the pentagon's filled region?
+    if (pentFilledSet.size === 0) return { x: cx, y: cy }; // No pentagon to check against
+
+    let adjacentToPent = false;
+    for (const idx of fillResult) {
+      const x = idx % w;
+      const y = Math.floor(idx / w);
+      // Check 4 neighbors
+      if (pentFilledSet.has((y - 1) * w + x) ||
+          pentFilledSet.has((y + 1) * w + x) ||
+          pentFilledSet.has(y * w + x - 1) ||
+          pentFilledSet.has(y * w + x + 1)) {
+        adjacentToPent = true;
+        break;
+      }
+    }
+
+    if (adjacentToPent) return { x: cx, y: cy };
+  }
+
+  return null;
+}
+
+/**
+ * Quick flood fill that returns the filled pixel indices if bounded, or null if unbounded.
+ */
+function quickBoundedFill(boundaryData: ImageData, sx: number, sy: number): number[] | null {
+  const w = boundaryData.width;
+  const h = boundaryData.height;
+  const visited = new Uint8Array(w * h);
+  const queue: number[] = [sx, sy];
+  let head = 0;
+  const filled: number[] = [];
+  const maxPixels = 60000;
+
+  while (head < queue.length && filled.length < maxPixels) {
+    const x = queue[head++];
+    const y = queue[head++];
+    if (x <= 0 || x >= w - 1 || y <= 0 || y >= h - 1) return null; // Hit edge
+    const idx = y * w + x;
+    if (visited[idx]) continue;
+    if (boundaryData.data[idx * 4 + 3] > 50) continue;
+    visited[idx] = 1;
+    filled.push(idx);
+    queue.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
+  }
+
+  if (filled.length >= maxPixels) return null; // Too large
+  if (filled.length < 5) return null; // Too small
+  return filled;
 }
 
 function findValidSeed(boundaryData: ImageData, center: Point): Point | null {
