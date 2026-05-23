@@ -229,19 +229,23 @@ function validateWithCycle(
     return { valid: false, tipsFound: 5 - missingTips, failReason: 'missing tips' };
   }
 
-  // Build allowed pairs and check edges.
+  // Build allowed pairs: pentagon edges + ALL edges from each tip to its pentagon vertices.
   const allowedPairs = new Set<string>();
+  // Pentagon edges
   for (let i = 0; i < 5; i++) {
     const pA = pentCycle[i];
     const pB = pentCycle[(i + 1) % 5];
     allowedPairs.add(Math.min(pA, pB) + '-' + Math.max(pA, pB));
   }
-  for (const [pentEdgeKey, tipV] of pentEdgeTips) {
-    const [pAStr, pBStr] = pentEdgeKey.split('-');
-    const pA = parseInt(pAStr);
-    const pB = parseInt(pBStr);
-    allowedPairs.add(Math.min(tipV, pA) + '-' + Math.max(tipV, pA));
-    allowedPairs.add(Math.min(tipV, pB) + '-' + Math.max(tipV, pB));
+  // Triangle edges: for each tip, add ALL its connections to pentagon vertices.
+  // A merged tip might serve multiple pentagon edges, so it connects to multiple pent vertices.
+  const allTips = new Set<number>([...pentEdgeTips.values()]);
+  for (const tipV of allTips) {
+    for (const pentV of pentCycle) {
+      if (adjacency.get(tipV)!.has(pentV)) {
+        allowedPairs.add(Math.min(tipV, pentV) + '-' + Math.max(tipV, pentV));
+      }
+    }
   }
 
   for (const key of seenEdges) {
