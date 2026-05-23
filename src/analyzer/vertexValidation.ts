@@ -291,6 +291,32 @@ function checkAssignment(
     if (!seenEdges.has(key)) return false;
   }
 
+  // Check: no tip vertex is inside the pentagon (rejects inward-pointing triangles).
+  // Use centroid of pentagon vertices as reference for "inside."
+  const pentPoints = pentCycle.map((i) => vertices[i]);
+  const centroid: Point = {
+    x: pentPoints.reduce((s, p) => s + p.x, 0) / 5,
+    y: pentPoints.reduce((s, p) => s + p.y, 0) / 5,
+  };
+
+  for (let i = 0; i < 5; i++) {
+    const tipV = assignment[i];
+    const tipPt = vertices[tipV];
+    const pA = vertices[pentCycle[i]];
+    const pB = vertices[pentCycle[(i + 1) % 5]];
+    // Midpoint of the pentagon edge
+    const edgeMid: Point = { x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 };
+    // The tip should be on the opposite side of the edge from the centroid.
+    // Check using cross product: if the tip and centroid are on the same side
+    // of the edge line, the triangle is pointing inward.
+    const edgeDx = pB.x - pA.x;
+    const edgeDy = pB.y - pA.y;
+    const crossTip = edgeDx * (tipPt.y - pA.y) - edgeDy * (tipPt.x - pA.x);
+    const crossCentroid = edgeDx * (centroid.y - pA.y) - edgeDy * (centroid.x - pA.x);
+    // Same sign = same side = tip is inside = invalid
+    if (crossTip * crossCentroid > 0) return false;
+  }
+
   return true;
 }
 
