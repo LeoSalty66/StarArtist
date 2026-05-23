@@ -84,34 +84,26 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
       }
     }
 
-    // Handle closed loops: if a and b are the same vertex, and the ordered list
-    // doesn't end with that vertex, add it back so we get the closing edge.
+    // Handle closed loops: if a and b are the same vertex, ensure the path
+    // includes it at both ends so edges from last intermediate back to start are created.
     const startVtx = findOrAdd(l.a);
     const endVtx = findOrAdd(l.b);
-    if (startVtx === endVtx && ordered.length >= 2 && ordered[ordered.length - 1] !== startVtx) {
-      ordered.push(startVtx);
-    }
-    // Also handle case where ordered starts and ends with the same vertex but
-    // the loop needs to be explicit.
-    if (startVtx === endVtx && ordered.length >= 2 && ordered[0] === startVtx && ordered[ordered.length - 1] !== startVtx) {
-      ordered.push(startVtx);
-    }
-    // If ordered only has the single vertex (pure self-loop with no intermediates),
-    // that means the loop has no corners/intersections, which is a self-edge.
-    // We add it back to create at least one edge.
-    if (startVtx === endVtx && ordered.length === 1) {
-      // A pure circle/loop with one vertex: this is a self-loop edge.
-      // For our star validation this shouldn't normally happen in a valid star,
-      // but we still count it.
-      ordered.push(startVtx);
+    if (startVtx === endVtx && ordered.length >= 2) {
+      // If the loop's start vertex isn't already at the end, add it.
+      if (ordered[ordered.length - 1] !== startVtx) {
+        ordered.push(startVtx);
+      }
+      // If it's only [A, A] that's meaningless, clear it.
+      if (ordered.length === 2 && ordered[0] === ordered[1]) {
+        ordered.length = 0;
+      }
     }
 
     for (let k = 0; k < ordered.length - 1; k++) {
       const a = ordered[k];
       const b = ordered[k + 1];
-      // Allow self-edges for loops (a === b is now valid for the closing edge).
-      // But skip zero-length non-loop edges.
-      if (a === b && startVtx !== endVtx) continue;
+      // Skip self-edges (same vertex to itself — meaningless for connectivity)
+      if (a === b) continue;
       adjacency.get(a)!.add(b);
       adjacency.get(b)!.add(a);
       const key = Math.min(a, b) + '-' + Math.max(a, b);
