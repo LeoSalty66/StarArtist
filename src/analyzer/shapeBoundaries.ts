@@ -26,14 +26,15 @@ export function extractShapeBoundaries(
   const exploded = explodeAtCorners(lines);
 
   // Pentagon boundary: trace the path along each pentagon edge.
-  const pentPath = buildFaceBoundary(pentCycle, vertices, exploded);
+  // Search the ORIGINAL lines (not exploded) since they have full pathPoints.
+  const pentPath = buildFaceBoundary(pentCycle, vertices, lines);
   if (!pentPath) return null;
 
-  // Triangle boundaries: each triangle is [pentCycle[i], tipAssignment[i], pentCycle[(i+1)%5]]
+  // Triangle boundaries
   const triangles: ShapeBoundary[] = [];
   for (let i = 0; i < 5; i++) {
     const triVertices = [pentCycle[i], tipAssignment[i], pentCycle[(i + 1) % 5]];
-    const triPath = buildFaceBoundary(triVertices, vertices, exploded);
+    const triPath = buildFaceBoundary(triVertices, vertices, lines);
     if (triPath) {
       triangles.push(triPath);
     }
@@ -79,40 +80,45 @@ function buildFaceBoundary(
 
 /**
  * Find the actual drawn path between two vertex positions.
- * Searches through exploded lines for one whose endpoints are near the target vertices.
- * Returns the pathPoints (or straight line if nothing found).
+ * Searches ALL lines (not just those whose endpoints match) for any line
+ * whose path passes through both vertices, then extracts the sub-path between them.
  */
 function findPathBetween(from: Point, to: Point, lines: Line[]): Point[] {
-  let bestLine: Line | null = null;
-  let bestDist = Infinity;
-  let reversed = false;
-
   for (const l of lines) {
-    // Check forward: l.a near from, l.b near to
-    const dForward = Math.hypot(l.a.x - from.x, l.a.y - from.y) +
-                     Math.hypot(l.b.x - to.x, l.b.y - to.y);
-    if (dForward < bestDist) {
-      bestDist = dForward;
-      bestLine = l;
-      reversed = false;
+    const pts = l.pathPoints && l.pathPoints.length >= 2 ? l.pathPoints : [l.a, l.b];
+    
+    // Find the closest point in pts to `from` and `to`.
+    let bestFromIdx = -1, bestFromDist = Infinity;
+    let bestToIdx = -1, bestToDist = Infinity;
+    
+    for (let i = 0; i < pts.length; i++) {
+      const df = Math.hypot(pts[i].x - from.x, pts[i].y - from.y);
+      const dt = Math.hypot(pts[i].x - to.x, pts[i].y - to.y);
+      if (df < bestFromDist) { bestFromDist = df; bestFromIdx = i; }
+      if (dt < bestToDist) { bestToDist = dt; bestToIdx = i; }
     }
-    // Check reverse: l.a near to, l.b near from
-    const dReverse = Math.hypot(l.a.x - to.x, l.a.y - to.y) +
-                     Math.hypot(l.b.x - from.x, l.b.y - from.y);
-    if (dReverse < bestDist) {
-      bestDist = dReverse;
-      bestLine = l;
-      reversed = true;
+    
+    // Both vertices must be near the path
+    if (bestFromDist > VERTEX_MERGE_DISTANCE * 2 || bestToDist > VERTEX_MERGE_DISTANCE * 2) continue;
+    // Must be different points on the path
+    if (bestFromIdx === bestToIdx) continue;
+    
+    // Extract the sub-path between them
+    const startIdx = Math.min(bestFromIdx, bestToIdx);
+    const endIdx = Math.max(bestFromIdx, bestToIdx);
+    let subPath = pts.slice(startIdx, endIdx + 1);
+    
+    // Ensure direction is from→to (not reversed)
+    if (bestFromIdx > bestToIdx) {
+      subPath = subPath.reverse();
     }
-  }
-
-  // Only use if the match is reasonably close (both endpoints within merge distance)
-  if (bestLine && bestDist < VERTEX_MERGE_DISTANCE * 4) {
-    let pts = bestLine.pathPoints && bestLine.pathPoints.length >= 2
-      ? [...bestLine.pathPoints]
-      : [bestLine.a, bestLine.b];
-    if (reversed) pts.reverse();
-    return pts;
+    
+    // Only use this if it's a reasonable length segment (not the entire stroke)
+    // Skip if the path contains other vertices between from and to
+    // (which would mean this isn't the direct edge between them)
+    if (subPath.length >= 2) {
+      return subPath;
+    }
   }
 
   // Fallback: straight line.
