@@ -3,8 +3,8 @@ import DrawingCanvas from '../canvas/DrawingCanvas';
 import Toolbar from '../canvas/Toolbar';
 import SuccessOverlay from '../canvas/SuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
-import { analyze } from '../analyzer/analyzer';
-import { vertexValidate } from '../analyzer/vertexValidation';
+import { analyze, type AnalysisResult } from '../analyzer/analyzer';
+import { vertexValidate, type VertexValidationResult } from '../analyzer/vertexValidation';
 import { clearStars } from '../storage/starLibrary';
 import { startBabble, stopBabble, isBabbling } from '../audio/voiceBabble';
 import type { Line, Tool } from '../canvas/types';
@@ -116,6 +116,19 @@ function TestScreen({ onBack }: Props) {
         >
           {babbling ? 'Stop Voice' : 'Test Voice'}
         </button>
+        <button
+          className="tool-btn"
+          onClick={() => {
+            const dump = buildDebugDump(vResult, analysis);
+            navigator.clipboard.writeText(dump).then(() => {
+              setExportMessage('Debug copied!');
+              setTimeout(() => setExportMessage(''), 2000);
+            });
+          }}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Copy Debug
+        </button>
         <span className="header-hint">
           {locked
             ? '⭐ Star complete!'
@@ -174,6 +187,71 @@ function TestScreen({ onBack }: Props) {
       </div>
     </div>
   );
+}
+
+function buildDebugDump(vResult: VertexValidationResult, analysis: AnalysisResult): string {
+  const lines: string[] = [];
+  lines.push('=== VERTEX VALIDATION DEBUG DUMP ===');
+  lines.push(`Result: ${vResult.isValidStar ? 'VALID' : 'INVALID'}`);
+  lines.push(`Message: ${vResult.message}`);
+  lines.push(`Vertices: ${vResult.vertices.length}`);
+  lines.push(`Edge count: ${vResult.edgeCount}`);
+  lines.push('');
+
+  // Vertices
+  lines.push('--- VERTICES ---');
+  for (let i = 0; i < vResult.vertices.length; i++) {
+    const v = vResult.vertices[i];
+    const degree = vResult.adjacency.get(i)?.size ?? 0;
+    const neighbors = [...(vResult.adjacency.get(i) ?? [])].join(', ');
+    lines.push(`  V${i}: (${v.x.toFixed(1)}, ${v.y.toFixed(1)}) | degree=${degree} | connects to: [${neighbors}]`);
+  }
+  lines.push('');
+
+  // Edges with multiplicity
+  lines.push('--- EDGES (with multiplicity) ---');
+  for (const [key, count] of vResult.edgeMultiplicity) {
+    lines.push(`  ${key}: ×${count}`);
+  }
+  lines.push('');
+
+  // Pentagon info
+  if (vResult.pentagonVertices.length > 0) {
+    lines.push('--- PENTAGON CYCLE ---');
+    lines.push(`  Vertices: ${vResult.pentagonVertices.join(' → ')} → ${vResult.pentagonVertices[0]}`);
+    lines.push(`  Pentagon edges:`);
+    for (let i = 0; i < 5; i++) {
+      const a = vResult.pentagonVertices[i];
+      const b = vResult.pentagonVertices[(i + 1) % 5];
+      const key = Math.min(a, b) + '-' + Math.max(a, b);
+      const mult = vResult.edgeMultiplicity.get(key) ?? 0;
+      lines.push(`    ${a}-${b} (multiplicity: ${mult})`);
+    }
+  }
+  lines.push('');
+
+  // Tips
+  if (vResult.tipVertices.length > 0) {
+    lines.push('--- TIP VERTICES ---');
+    for (const t of vResult.tipVertices) {
+      const neighbors = [...(vResult.adjacency.get(t) ?? [])].join(', ');
+      lines.push(`  V${t}: connects to [${neighbors}]`);
+    }
+  }
+  lines.push('');
+
+  // Old analyzer info
+  lines.push('=== OLD FACE-BASED ANALYZER ===');
+  lines.push(`Result: ${analysis.isValidStar ? 'VALID' : 'INVALID'}`);
+  lines.push(`Message: ${analysis.message}`);
+  lines.push(`Bounded faces: ${analysis.boundedFaces.length}`);
+  for (const f of analysis.boundedFaces) {
+    lines.push(`  Face ${f.id}: ${f.halfEdgeIds.length} sides`);
+  }
+  lines.push(`Dangling edges: ${analysis.danglingEdgeIds.length}`);
+  lines.push('');
+
+  return lines.join('\n');
 }
 
 export default TestScreen;
