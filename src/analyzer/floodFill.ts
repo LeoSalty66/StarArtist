@@ -1,11 +1,13 @@
 import type { Line, Point } from '../canvas/types';
+import { lineToPath } from '../canvas/curveUtils';
 
 const CANVAS_SIZE = 600;
 const STROKE_WIDTH = 4;
 
 /**
- * Generate fill overlays using ISOLATED SHAPES:
- * For each face, render ONLY that face's edges, find a bounded seed, fill it.
+ * Generate fill overlays using ALL lines as boundary with progressive claiming.
+ * After each shape is filled, its pixels become boundary so subsequent fills
+ * can't overlap.
  */
 export function generateFillOverlays(
   pentCycle: number[],
@@ -14,43 +16,8 @@ export function generateFillOverlays(
   lines: Line[],
 ): { pentagonDataUrl: string; triangleDataUrls: string[]; debug: string } | null {
   const debugLines: string[] = ['=== FLOOD FILL DEBUG ==='];
-  debugLines.push(`Lines: ${lines.length}`);
 
-  // Pentagon
-  const pentPoints = pentCycle.map((i) => vertices[i]);
-  const pentCenter = centroid(pentPoints);
-  debugLines.push(`\nPENTAGON centroid: (${pentCenter.x.toFixed(1)}, ${pentCenter.y.toFixed(1)})`);
-  const pentBoundary = renderIsolatedFace(pentCycle, vertices, lines);
-  const pentSeed = findValidSeed(pentBoundary, pentCenter);
-  debugLines.push(`Pentagon seed: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
-  const pentDataUrl = pentSeed ? doFloodFill(pentBoundary, pentSeed, 'rgba(126, 200, 227, 0.3)').dataUrl : '';
-  debugLines.push(`Pentagon fill: ${pentDataUrl ? 'SUCCESS' : 'FAILED'}`);
-
-  // Triangles
-  const triDataUrls: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    const triVerts = [pentCycle[i], tipAssignment[i], pentCycle[(i + 1) % 5]];
-    const triPoints = triVerts.map((v) => vertices[v]);
-    const triCenter = centroid(triPoints);
-    debugLines.push(`\nTRIANGLE ${i} vertices: [${triVerts.join(', ')}]`);
-    debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
-    const triBoundary = renderIsolatedFace(triVerts, vertices, lines);
-    const triSeed = findValidSeed(triBoundary, triCenter);
-    debugLines.push(`  seed: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
-    const triDataUrl = triSeed ? doFloodFill(triBoundary, triSeed, 'rgba(176, 136, 249, 0.2)').dataUrl : '';
-    debugLines.push(`  fill: ${triDataUrl ? 'SUCCESS' : 'FAILED'}`);
-    triDataUrls.push(triDataUrl);
-  }
-
-  return { pentagonDataUrl: pentDataUrl, triangleDataUrls: triDataUrls, debug: debugLines.join('\n') };
-}
-
-/**
- * Render only the edges of a single face onto a clean canvas.
- * For each edge (vertex pair), find the portion of an original line's path
- * that connects them and draw it.
- */
-function renderIsolatedFace(faceVertexIndices: number[], vertices: Point[], originalLines: Line[]): ImageData {
+  // Render ALL lines as boundary.
   const canvas = document.createElement('canvas');
   canvas.width = CANVAS_SIZE;
   canvas.height = CANVAS_SIZE;
@@ -61,69 +28,66 @@ function renderIsolatedFace(faceVertexIndices: number[], vertices: Point[], orig
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  for (let i = 0; i < faceVertexIndices.length; i++) {
-    const fromPt = vertices[faceVertexIndices[i]];
-    const toPt = vertices[faceVertexIndices[(i + 1) % faceVertexIndices.length]];
-    drawSubPath(ctx, fromPt, toPt, originalLines);
+  for (const l of lines) {
+    const pathStr = lineToPath(l);
+    try {
+      const path2d = new Path2D(pathStr);
+      ctx.stroke(path2d);
+    } catch {
+      ctx.beginPath();
+      ctx.moveTo(l.a.x, l.a.y);
+      ctx.lineTo(l.b.x, l.b.y);
+      ctx.stroke();
+    }
   }
 
-  return ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  const boundaryData = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  debugLines.push(`Lines rendered: ${lines.length}`);
+
+  // Fill pentagon first.
+  const pentPoints = pentCycle.map((i) => vertices[i]);
+  const pentCenter = centroid(pentPoints);
+  debugLines.push(`\nPENTAGON centroid: (${pentCenter.x.toFixed(1)}, ${pentCenter.y.toFixed(1)})`);
+  const pentSeed = findValidSeed(boundaryData, pentCenter);
+  debugLines.push(`Pentagon seed: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
+  let pentDataUrl = '';
+  if (pentSeed) {
+    const { dataUrl, filledIndices } = doFloodFill(boundaryData, pentSeed, 'rgba(126, 200, 227, 0.3)');
+    pentDataUrl = dataUrl;
+    markAsBoundary(boundaryData, filledIndices);
+    debugLines.push(`Pentagon fill: SUCCESS (${filledIndices.length} pixels)`);
+  } else {
+    debugLines.push(`Pentagon fill: FAILED`);
+  }
+
+  // Fill triangles.
+  const triDataUrls: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const triVerts = [pentCycle[i], tipAssignment[i], pentCycle[(i + 1) % 5]];
+    const triPoints = triVerts.map((v) => vertices[v]);
+    const triCenter = centroid(triPoints);
+    debugLines.push(`\nTRIANGLE ${i} vertices: [${triVerts.join(', ')}]`);
+    debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
+    const triSeed = findValidSeed(boundaryData, triCenter);
+    debugLines.push(`  seed: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
+    if (triSeed) {
+      const { dataUrl, filledIndices } = doFloodFill(boundaryData, triSeed, 'rgba(176, 136, 249, 0.2)');
+      triDataUrls.push(dataUrl);
+      markAsBoundary(boundaryData, filledIndices);
+      debugLines.push(`  fill: SUCCESS (${filledIndices.length} pixels)`);
+    } else {
+      triDataUrls.push('');
+      debugLines.push(`  fill: FAILED`);
+    }
+  }
+
+  return { pentagonDataUrl: pentDataUrl, triangleDataUrls: triDataUrls, debug: debugLines.join('\n') };
 }
 
-/**
- * Draw the sub-path between two vertex positions by searching original lines.
- * For each original line, walk its pathPoints and find the closest indices to
- * both vertices, then draw the sub-path between them.
- */
-function drawSubPath(ctx: CanvasRenderingContext2D, from: Point, to: Point, lines: Line[]): void {
-  const NEAR = 10;
-  let bestSubPath: Point[] | null = null;
-  let bestLength = Infinity;
-
-  for (const l of lines) {
-    const pts = l.pathPoints && l.pathPoints.length >= 2 ? l.pathPoints : [l.a, l.b];
-
-    // Find ALL indices near `from` and `to`
-    const fromIndices: number[] = [];
-    const toIndices: number[] = [];
-    for (let i = 0; i < pts.length; i++) {
-      if (Math.hypot(pts[i].x - from.x, pts[i].y - from.y) < NEAR) fromIndices.push(i);
-      if (Math.hypot(pts[i].x - to.x, pts[i].y - to.y) < NEAR) toIndices.push(i);
-    }
-
-    // Try all from/to index combinations, pick the shortest sub-path
-    for (const fi of fromIndices) {
-      for (const ti of toIndices) {
-        if (fi === ti) continue;
-        const startIdx = Math.min(fi, ti);
-        const endIdx = Math.max(fi, ti);
-        const subPath = pts.slice(startIdx, endIdx + 1);
-        // Compute length
-        let len = 0;
-        for (let k = 1; k < subPath.length; k++) {
-          len += Math.hypot(subPath[k].x - subPath[k - 1].x, subPath[k].y - subPath[k - 1].y);
-        }
-        if (len < bestLength) {
-          bestLength = len;
-          bestSubPath = fi < ti ? subPath : [...subPath].reverse();
-        }
-      }
-    }
+function markAsBoundary(data: ImageData, indices: number[]): void {
+  for (const idx of indices) {
+    data.data[idx * 4 + 3] = 255;
   }
-
-  // Draw the best sub-path found
-  ctx.beginPath();
-  if (bestSubPath && bestSubPath.length >= 2) {
-    ctx.moveTo(bestSubPath[0].x, bestSubPath[0].y);
-    for (let i = 1; i < bestSubPath.length; i++) {
-      ctx.lineTo(bestSubPath[i].x, bestSubPath[i].y);
-    }
-  } else {
-    // Fallback: straight line
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
-  }
-  ctx.stroke();
 }
 
 function findValidSeed(boundaryData: ImageData, center: Point): Point | null {
@@ -156,7 +120,6 @@ function isFloodBounded(boundaryData: ImageData, sx: number, sy: number): boolea
   const queue: number[] = [sx, sy];
   let head = 0;
   let count = 0;
-  // A legitimate star face should be at most ~20% of the canvas area.
   const maxPixels = 60000;
 
   while (head < queue.length && count < maxPixels) {
@@ -171,9 +134,7 @@ function isFloodBounded(boundaryData: ImageData, sx: number, sy: number): boolea
     queue.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
 
-  // If we hit maxPixels without finishing, this region is too large to be a star face.
   if (count >= maxPixels) return false;
-
   return count > 5;
 }
 
