@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DrawingCanvas from '../canvas/DrawingCanvas';
 import Toolbar from '../canvas/Toolbar';
-import SuccessOverlay from '../canvas/SuccessOverlay';
+import CurvedSuccessOverlay from '../canvas/CurvedSuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze, type AnalysisResult } from '../analyzer/analyzer';
 import { vertexValidate, type VertexValidationResult } from '../analyzer/vertexValidation';
@@ -147,14 +147,12 @@ function TestScreen({ onBack }: Props) {
             locked={locked}
             boilActive={boilActive}
             successOverlay={
-              analysis.isValidStar &&
-              analysis.pentagonIdx !== null ? (
-                <SuccessOverlay
-                  graph={analysis.graph}
-                  pentagon={analysis.boundedFaces[analysis.pentagonIdx]}
-                  triangles={analysis.triangleIdxs.map(
-                    (i) => analysis.boundedFaces[i],
-                  )}
+              locked ? (
+                <CurvedSuccessOverlay
+                  pentCycle={vResult.pentagonVertices}
+                  tipAssignment={vResult.tipAssignment}
+                  vertices={vResult.vertices}
+                  lines={drawing.lines}
                 />
               ) : undefined
             }

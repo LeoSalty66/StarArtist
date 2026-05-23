@@ -10,6 +10,7 @@ export interface VertexValidationResult {
   adjacency: Map<number, Set<number>>;
   pentagonVertices: number[];
   tipVertices: number[];
+  tipAssignment: number[]; // tipAssignment[i] = vertex serving pentagon edge i
   edgeCount: number;
   edgeMultiplicity: Map<string, number>;
 }
@@ -29,6 +30,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     adjacency: new Map(),
     pentagonVertices: [],
     tipVertices: [],
+    tipAssignment: [],
     edgeCount: 0,
     edgeMultiplicity: new Map(),
   };
@@ -159,6 +161,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
       result.isValidStar = true;
       result.pentagonVertices = pentCycle;
       result.tipVertices = vertices.map((_, i) => i).filter((i) => !new Set(pentCycle).has(i));
+      result.tipAssignment = validation.assignment;
       result.message = '⭐ Valid 5-pointed star!';
       return result;
     }
@@ -178,6 +181,7 @@ interface CycleValidation {
   valid: boolean;
   tipsFound: number;
   failReason: string;
+  assignment: number[];
 }
 
 function validateWithCycle(
@@ -208,7 +212,7 @@ function validateWithCycle(
   // Check if all edges have at least one candidate.
   for (let i = 0; i < 5; i++) {
     if (candidates[i].length === 0) {
-      return { valid: false, tipsFound: 5 - candidates.filter(c => c.length === 0).length, failReason: 'missing tip candidates' };
+      return { valid: false, tipsFound: 5 - candidates.filter(c => c.length === 0).length, failReason: 'missing tip candidates', assignment: [] };
     }
   }
 
@@ -217,10 +221,10 @@ function validateWithCycle(
   const validAssignment = backtrackAssign(0, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices);
 
   if (validAssignment) {
-    return { valid: true, tipsFound: 5, failReason: '' };
+    return { valid: true, tipsFound: 5, failReason: '', assignment: [...assignment] };
   }
 
-  return { valid: false, tipsFound: 5, failReason: 'no valid tip assignment found' };
+  return { valid: false, tipsFound: 5, failReason: 'no valid tip assignment found', assignment: [] };
 }
 
 /**
