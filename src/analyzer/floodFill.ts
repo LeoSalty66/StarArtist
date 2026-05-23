@@ -124,8 +124,10 @@ function isFloodBounded(boundaryData: ImageData, sx: number, sy: number): boolea
   const queue: number[] = [sx, sy];
   let head = 0;
   let count = 0;
+  // A legitimate star face should be at most ~20% of the canvas area.
+  const maxPixels = 60000;
 
-  while (head < queue.length && count < 100000) {
+  while (head < queue.length && count < maxPixels) {
     const x = queue[head++];
     const y = queue[head++];
     if (x <= 0 || x >= w - 1 || y <= 0 || y >= h - 1) return false;
@@ -136,6 +138,9 @@ function isFloodBounded(boundaryData: ImageData, sx: number, sy: number): boolea
     count++;
     queue.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
+
+  // If we hit maxPixels without finishing, this region is too large to be a star face.
+  if (count >= maxPixels) return false;
 
   return count > 5;
 }
