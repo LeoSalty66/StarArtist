@@ -16,7 +16,7 @@ export function generateFillOverlays(
   tipAssignment: number[],
   vertices: Point[],
   lines: Line[],
-): { pentagonDataUrl: string; triangleDataUrls: string[] } | null {
+): { pentagonDataUrl: string; triangleDataUrls: string[]; debug: string } | null {
   // Render all lines on a shared boundary canvas.
   const boundaryCanvas = document.createElement('canvas');
   boundaryCanvas.width = CANVAS_SIZE;
@@ -43,10 +43,18 @@ export function generateFillOverlays(
 
   const boundaryData = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
+  const debugLines: string[] = [];
+  debugLines.push('=== FLOOD FILL DEBUG ===');
+  debugLines.push(`Lines rendered: ${lines.length}`);
+
   // Pentagon: seed search near centroid of pentagon vertices
   const pentPoints = pentCycle.map((i) => vertices[i]);
-  const pentSeed = findValidSeed(boundaryData, centroid(pentPoints));
+  const pentCenter = centroid(pentPoints);
+  debugLines.push(`\nPENTAGON centroid: (${pentCenter.x.toFixed(1)}, ${pentCenter.y.toFixed(1)})`);
+  const pentSeed = findValidSeed(boundaryData, pentCenter);
+  debugLines.push(`Pentagon seed found: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
   const pentDataUrl = pentSeed ? doFloodFill(boundaryData, pentSeed, 'rgba(126, 200, 227, 0.3)') : '';
+  debugLines.push(`Pentagon fill: ${pentDataUrl ? 'SUCCESS' : 'FAILED'}`);
 
   // Triangles: seed search near centroid of each triangle's vertices
   const triDataUrls: string[] = [];
@@ -56,12 +64,17 @@ export function generateFillOverlays(
       vertices[tipAssignment[i]],
       vertices[pentCycle[(i + 1) % 5]],
     ];
-    const triSeed = findValidSeed(boundaryData, centroid(triPoints));
+    const triCenter = centroid(triPoints);
+    debugLines.push(`\nTRIANGLE ${i} vertices: [${pentCycle[i]}, ${tipAssignment[i]}, ${pentCycle[(i + 1) % 5]}]`);
+    debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
+    const triSeed = findValidSeed(boundaryData, triCenter);
+    debugLines.push(`  seed found: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
     const triDataUrl = triSeed ? doFloodFill(boundaryData, triSeed, 'rgba(176, 136, 249, 0.2)') : '';
+    debugLines.push(`  fill: ${triDataUrl ? 'SUCCESS' : 'FAILED'}`);
     triDataUrls.push(triDataUrl);
   }
 
-  return { pentagonDataUrl: pentDataUrl, triangleDataUrls: triDataUrls };
+  return { pentagonDataUrl: pentDataUrl, triangleDataUrls: triDataUrls, debug: debugLines.join('\n') };
 }
 
 /**

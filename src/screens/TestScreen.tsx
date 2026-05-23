@@ -5,6 +5,7 @@ import CurvedSuccessOverlay from '../canvas/CurvedSuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze, type AnalysisResult } from '../analyzer/analyzer';
 import { vertexValidate, type VertexValidationResult } from '../analyzer/vertexValidation';
+import { generateFillOverlays } from '../analyzer/floodFill';
 import { clearStars } from '../storage/starLibrary';
 import { startBabble, stopBabble, isBabbling } from '../audio/voiceBabble';
 import type { Line, Tool } from '../canvas/types';
@@ -128,6 +129,23 @@ function TestScreen({ onBack }: Props) {
           style={{ marginLeft: '0.5rem' }}
         >
           Copy Debug
+        </button>
+        <button
+          className="tool-btn"
+          onClick={() => {
+            if (locked) {
+              const overlays = generateFillOverlays(vResult.pentagonVertices, vResult.tipAssignment, vResult.vertices, drawing.lines);
+              if (overlays) {
+                navigator.clipboard.writeText(overlays.debug).then(() => {
+                  setExportMessage('Fill debug copied!');
+                  setTimeout(() => setExportMessage(''), 2000);
+                });
+              }
+            }
+          }}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Fill Debug
         </button>
         <span className="header-hint">
           {locked
