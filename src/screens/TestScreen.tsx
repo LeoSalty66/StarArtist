@@ -27,8 +27,19 @@ function TestScreen({ onBack }: Props) {
   const vResult = useMemo(() => vertexValidate(drawing.lines), [drawing.lines]);
 
   // Use vertex validation as primary.
-  // Fall back to shared-edge triangle validation (old face-based analyzer) always.
-  const locked = vResult.isValidStar || analysis.isValidStar;
+  // Fall back to shared-edge triangle validation (old face-based analyzer)
+  // ONLY if no vertex pair has multiple edges (which would cause false positives).
+  let sharedEdgeValid = false;
+  if (!vResult.isValidStar) {
+    let hasMultiEdge = false;
+    for (const [, count] of vResult.edgeMultiplicity) {
+      if (count > 1) { hasMultiEdge = true; break; }
+    }
+    if (!hasMultiEdge) {
+      sharedEdgeValid = analysis.isValidStar;
+    }
+  }
+  const locked = vResult.isValidStar || sharedEdgeValid;
 
   // Activate line boil after the fill animation finishes
   useEffect(() => {
