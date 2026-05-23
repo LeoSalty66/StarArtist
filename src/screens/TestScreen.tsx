@@ -26,8 +26,8 @@ function TestScreen({ onBack }: Props) {
   const analysis = useMemo(() => analyze(drawing.lines), [drawing.lines]);
   const vResult = useMemo(() => vertexValidate(drawing.lines), [drawing.lines]);
 
-  // Use vertex validation as primary, fall back to old analyzer.
-  const locked = vResult.isValidStar || analysis.isValidStar;
+  // Use vertex validation only (old face-based analyzer disabled for now).
+  const locked = vResult.isValidStar;
 
   // Activate line boil after the fill animation finishes
   useEffect(() => {
