@@ -188,3 +188,32 @@ export function findLineIntersections(l1: Line, l2: Line): Point[] {
 
   return results;
 }
+
+/**
+ * Find all self-intersection points within a single line's path.
+ * Checks non-adjacent segments for crossings.
+ */
+export function findSelfIntersections(l: Line): Point[] {
+  const segs = getLineSegments(l);
+  if (segs.length < 3) return [];
+  const results: Point[] = [];
+
+  for (let i = 0; i < segs.length; i++) {
+    // Skip adjacent segments (they share an endpoint and will always "intersect" there)
+    for (let j = i + 2; j < segs.length; j++) {
+      // Also skip if i=0 and j=last (for closed loops, they share start/end)
+      if (i === 0 && j === segs.length - 1) continue;
+      const ix = segmentIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
+      if (ix) {
+        // Skip intersections at endpoints (shared vertices)
+        const atEndpoint =
+          dist(ix, l.a) < 4 || dist(ix, l.b) < 4;
+        if (atEndpoint) continue;
+        const isDup = results.some((r) => dist(r, ix) < 4);
+        if (!isDup) results.push(ix);
+      }
+    }
+  }
+
+  return results;
+}

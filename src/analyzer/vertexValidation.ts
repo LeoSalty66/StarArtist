@@ -1,5 +1,5 @@
 import type { Line, Point } from '../canvas/types';
-import { getLineSegments, findLineIntersections } from '../canvas/geometry';
+import { getLineSegments, findLineIntersections, findSelfIntersections } from '../canvas/geometry';
 
 const VERTEX_MERGE_DISTANCE = 6; // pixels
 
@@ -61,6 +61,12 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
       const ixs = findLineIntersections(exploded[i], exploded[j]);
       for (const ix of ixs) findOrAdd(ix);
     }
+  }
+
+  // Also detect self-intersections within each line.
+  for (const l of exploded) {
+    const selfIxs = findSelfIntersections(l);
+    for (const ix of selfIxs) findOrAdd(ix);
   }
 
   // Step 3: Build adjacency and count edges.
