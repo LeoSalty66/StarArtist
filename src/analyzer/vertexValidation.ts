@@ -78,15 +78,16 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   for (const l of exploded) {
     const onLine: { idx: number; dist: number }[] = [];
     for (let i = 0; i < vertices.length; i++) {
-      const d = distToLine(vertices[i], l);
-      if (d <= VERTEX_MERGE_DISTANCE) {
-        onLine.push({ idx: i, dist: distanceAlongLine(vertices[i], l) });
+      // Find ALL positions along the path where this vertex is near.
+      // This handles self-intersections where the same vertex appears at multiple path locations.
+      const positions = allDistancesAlongLine(vertices[i], l);
+      for (const dist of positions) {
+        onLine.push({ idx: i, dist });
       }
     }
     onLine.sort((a, b) => a.dist - b.dist);
 
-    // Deduplicate consecutive same vertex, BUT preserve the closing vertex
-    // for loops (where start == end).
+    // Deduplicate only CONSECUTIVE same vertex (not all occurrences).
     const ordered: number[] = [];
     for (const entry of onLine) {
       if (ordered.length === 0 || ordered[ordered.length - 1] !== entry.idx) {
@@ -465,4 +466,38 @@ function distToSegment(p: Point, a: Point, b: Point): number {
   t = Math.max(0, Math.min(1, t));
   const proj = { x: a.x + t * dx, y: a.y + t * dy };
   return Math.hypot(p.x - proj.x, p.y - proj.y);
+}
+
+/**
+ * Find ALL distances along a line's path where a point is near.
+ * For self-intersecting lines, a vertex may be near the path at multiple
+ * distinct locations. Returns an array of arc-length distances.
+ */
+function allDistancesAlongLine(p: Point, l: Line): number[] {
+  const segs = getLineSegments(l);
+  const results: number[] = [];
+  let cumLen = 0;
+
+  for (const [s, e] of segs) {
+    const segLen = Math.hypot(e.x - s.x, e.y - s.y);
+    const d = distToSegment(p, s, e);
+
+    if (d <= VERTEX_MERGE_DISTANCE) {
+      const dx = e.x - s.x;
+      const dy = e.y - s.y;
+      const lenSq = dx * dx + dy * dy;
+      let t = 0;
+      if (lenSq > 0) t = Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.y - s.y) * dy) / lenSq));
+      const dist = cumLen + t * segLen;
+
+      // Only add if it's not too close to an already-found position
+      // (avoids duplicates from adjacent segments near the same point)
+      const isDup = results.some((r) => Math.abs(r - dist) < 5);
+      if (!isDup) results.push(dist);
+    }
+
+    cumLen += segLen;
+  }
+
+  return results;
 }
