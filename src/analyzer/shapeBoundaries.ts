@@ -79,31 +79,44 @@ function buildFaceBoundary(
 
 /**
  * Find the actual drawn path between two vertex positions.
- * Searches through exploded lines for one whose endpoints match.
- * Returns the pathPoints (or straight line if no pathPoints).
+ * Searches through exploded lines for one whose endpoints are near the target vertices.
+ * Returns the pathPoints (or straight line if nothing found).
  */
 function findPathBetween(from: Point, to: Point, lines: Line[]): Point[] {
+  let bestLine: Line | null = null;
+  let bestDist = Infinity;
+  let reversed = false;
+
   for (const l of lines) {
-    // Check if this line goes from `from` to `to`.
-    if (nearPoint(l.a, from) && nearPoint(l.b, to)) {
-      return l.pathPoints && l.pathPoints.length >= 2
-        ? l.pathPoints
-        : [l.a, l.b];
+    // Check forward: l.a near from, l.b near to
+    const dForward = Math.hypot(l.a.x - from.x, l.a.y - from.y) +
+                     Math.hypot(l.b.x - to.x, l.b.y - to.y);
+    if (dForward < bestDist) {
+      bestDist = dForward;
+      bestLine = l;
+      reversed = false;
     }
-    // Check reverse direction.
-    if (nearPoint(l.a, to) && nearPoint(l.b, from)) {
-      const pts = l.pathPoints && l.pathPoints.length >= 2
-        ? [...l.pathPoints]
-        : [l.a, l.b];
-      return pts.reverse();
+    // Check reverse: l.a near to, l.b near from
+    const dReverse = Math.hypot(l.a.x - to.x, l.a.y - to.y) +
+                     Math.hypot(l.b.x - from.x, l.b.y - from.y);
+    if (dReverse < bestDist) {
+      bestDist = dReverse;
+      bestLine = l;
+      reversed = true;
     }
   }
+
+  // Only use if the match is reasonably close (both endpoints within merge distance)
+  if (bestLine && bestDist < VERTEX_MERGE_DISTANCE * 4) {
+    let pts = bestLine.pathPoints && bestLine.pathPoints.length >= 2
+      ? [...bestLine.pathPoints]
+      : [bestLine.a, bestLine.b];
+    if (reversed) pts.reverse();
+    return pts;
+  }
+
   // Fallback: straight line.
   return [from, to];
-}
-
-function nearPoint(a: Point, b: Point): boolean {
-  return Math.hypot(a.x - b.x, a.y - b.y) <= VERTEX_MERGE_DISTANCE;
 }
 
 /**
