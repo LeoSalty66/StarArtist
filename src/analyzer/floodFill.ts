@@ -51,18 +51,16 @@ export function generateFillOverlays(
   const pentSeed = findValidSeed(boundaryData, pentCenter);
   debugLines.push(`Pentagon seed: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
   let pentDataUrl = '';
-  let pentFilledSet: Set<number> = new Set();
   if (pentSeed) {
     const { dataUrl, filledIndices } = doFloodFill(boundaryData, pentSeed, 'rgba(126, 200, 227, 0.3)');
     pentDataUrl = dataUrl;
-    pentFilledSet = new Set(filledIndices);
     markAsBoundary(boundaryData, filledIndices);
     debugLines.push(`Pentagon fill: SUCCESS (${filledIndices.length} pixels)`);
   } else {
     debugLines.push(`Pentagon fill: FAILED`);
   }
 
-  // Fill triangles. Each must share a significant border with the pentagon.
+  // Fill triangles.
   const triDataUrls: string[] = [];
   for (let i = 0; i < 5; i++) {
     const triVerts = [pentCycle[i], tipAssignment[i], pentCycle[(i + 1) % 5]];
@@ -70,7 +68,7 @@ export function generateFillOverlays(
     const triCenter = centroid(triPoints);
     debugLines.push(`\nTRIANGLE ${i} vertices: [${triVerts.join(', ')}]`);
     debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
-    const triSeed = findTriangleSeed(boundaryData, triCenter, pentFilledSet);
+    const triSeed = findValidSeed(boundaryData, triCenter);
     debugLines.push(`  seed: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
     if (triSeed) {
       const { dataUrl, filledIndices } = doFloodFill(boundaryData, triSeed, 'rgba(176, 136, 249, 0.2)');
