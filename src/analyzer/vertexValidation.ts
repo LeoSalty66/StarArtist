@@ -231,6 +231,10 @@ function validateWithCycle(
   const validAssignment = backtrackAssign(0, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices, lines);
 
   if (validAssignment) {
+    // Check tips are outside the pentagon before accepting.
+    if (!areTipsOutsidePentagon([...assignment], pentCycle, vertices, lines)) {
+      return { valid: false, tipsFound: 5, failReason: 'tip inside pentagon', assignment: [] };
+    }
     return { valid: true, tipsFound: 5, failReason: '', assignment: [...assignment] };
   }
 
@@ -307,8 +311,7 @@ function checkAssignment(
   }
 
   // Check: no tip vertex is inside the pentagon using flood-fill.
-  // Render only pentagon edges, then flood from each tip. If bounded → inside → invalid.
-  if (!areTipsOutsidePentagon(assignment, pentCycle, vertices, lines)) return false;
+  // (Moved outside checkAssignment to avoid running during backtracking)
 
   return true;
 }
