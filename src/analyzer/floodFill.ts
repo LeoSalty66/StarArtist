@@ -51,16 +51,18 @@ export function generateFillOverlays(
   const pentSeed = findValidSeed(boundaryData, pentCenter);
   debugLines.push(`Pentagon seed: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
   let pentDataUrl = '';
+  let pentFilledSet: Set<number> = new Set();
   if (pentSeed) {
     const { dataUrl, filledIndices } = doFloodFill(boundaryData, pentSeed, 'rgba(126, 200, 227, 0.3)');
     pentDataUrl = dataUrl;
+    pentFilledSet = new Set(filledIndices);
     markAsBoundary(boundaryData, filledIndices);
     debugLines.push(`Pentagon fill: SUCCESS (${filledIndices.length} pixels)`);
   } else {
     debugLines.push(`Pentagon fill: FAILED`);
   }
 
-  // Fill triangles.
+  // Fill triangles. Each must share a significant border with the pentagon.
   const triDataUrls: string[] = [];
   for (let i = 0; i < 5; i++) {
     const triVerts = [pentCycle[i], tipAssignment[i], pentCycle[(i + 1) % 5]];
@@ -68,7 +70,7 @@ export function generateFillOverlays(
     const triCenter = centroid(triPoints);
     debugLines.push(`\nTRIANGLE ${i} vertices: [${triVerts.join(', ')}]`);
     debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
-    const triSeed = findValidSeed(boundaryData, triCenter);
+    const triSeed = findTriangleSeed(boundaryData, triCenter, pentFilledSet);
     debugLines.push(`  seed: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
     if (triSeed) {
       const { dataUrl, filledIndices } = doFloodFill(boundaryData, triSeed, 'rgba(176, 136, 249, 0.2)');
@@ -88,6 +90,85 @@ function markAsBoundary(data: ImageData, indices: number[]): void {
   for (const idx of indices) {
     data.data[idx * 4 + 3] = 255;
   }
+}
+
+/**
+ * Find a triangle seed that shares a significant border with the pentagon.
+ * Does a quick fill from each candidate, counts how many border pixels
+ * neighbor the pentagon's filled pixels. If too few (≤20), it's whitespace.
+ */
+function findTriangleSeed(
+  boundaryData: ImageData,
+  center: Point,
+  pentFilledSet: Set<number>,
+): Point | null {
+  const w = boundaryData.width;
+  const h = boundaryData.height;
+  const MIN_SHARED_BORDER = 20;
+
+  const candidates: Point[] = [center];
+  for (let r = 2; r < 150; r += 2) {
+    for (let angle = 0; angle < 360; angle += 10) {
+      const rad = angle * Math.PI / 180;
+      candidates.push({ x: center.x + r * Math.cos(rad), y: center.y + r * Math.sin(rad) });
+    }
+  }
+
+  for (const c of candidates) {
+    const cx = Math.round(c.x);
+    const cy = Math.round(c.y);
+    if (cx < 2 || cx >= w - 2 || cy < 2 || cy >= h - 2) continue;
+    if (boundaryData.data[((cy * w + cx) * 4) + 3] > 50) continue;
+    if (!isFloodBounded(boundaryData, cx, cy)) continue;
+
+    // Quick fill to get the region's pixels.
+    const { filledIndices } = doFloodFillRaw(boundaryData, cx, cy);
+    if (filledIndices.length < 5) continue;
+
+    // Count border pixels shared with pentagon.
+    if (pentFilledSet.size === 0) return { x: cx, y: cy };
+
+    let sharedBorder = 0;
+    for (const idx of filledIndices) {
+      const x = idx % w;
+      const y = Math.floor(idx / w);
+      if (pentFilledSet.has((y - 1) * w + x) ||
+          pentFilledSet.has((y + 1) * w + x) ||
+          pentFilledSet.has(y * w + x - 1) ||
+          pentFilledSet.has(y * w + x + 1)) {
+        sharedBorder++;
+        if (sharedBorder >= MIN_SHARED_BORDER) break;
+      }
+    }
+
+    if (sharedBorder >= MIN_SHARED_BORDER) return { x: cx, y: cy };
+  }
+
+  return null;
+}
+
+/** Raw flood fill that just returns indices without rendering to canvas. */
+function doFloodFillRaw(boundaryData: ImageData, sx: number, sy: number): { filledIndices: number[] } {
+  const w = boundaryData.width;
+  const h = boundaryData.height;
+  const visited = new Uint8Array(w * h);
+  const queue: number[] = [sx, sy];
+  let head = 0;
+  const filled: number[] = [];
+
+  while (head < queue.length && filled.length < 60000) {
+    const x = queue[head++];
+    const y = queue[head++];
+    if (x < 0 || x >= w || y < 0 || y >= h) continue;
+    const idx = y * w + x;
+    if (visited[idx]) continue;
+    if (boundaryData.data[idx * 4 + 3] > 50) continue;
+    visited[idx] = 1;
+    filled.push(idx);
+    queue.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
+  }
+
+  return { filledIndices: filled };
 }
 
 function findValidSeed(boundaryData: ImageData, center: Point): Point | null {
