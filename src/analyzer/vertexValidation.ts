@@ -296,23 +296,29 @@ function checkAssignment(
   }
 
   // Check: no tip vertex is inside the pentagon (rejects inward-pointing triangles).
-  // Use centroid of pentagon vertices as reference for "inside."
+  // Only check non-merged tips (those serving a single edge).
+  // Merged tips serving multiple edges can't be geometrically "outside" all of them
+  // simultaneously for non-convex pentagons, so skip them.
   const pentPoints = pentCycle.map((i) => vertices[i]);
   const centroid: Point = {
     x: pentPoints.reduce((s, p) => s + p.x, 0) / 5,
     y: pentPoints.reduce((s, p) => s + p.y, 0) / 5,
   };
 
+  // Count how many edges each tip serves
+  const tipEdgeCount = new Map<number, number>();
   for (let i = 0; i < 5; i++) {
     const tipV = assignment[i];
+    tipEdgeCount.set(tipV, (tipEdgeCount.get(tipV) ?? 0) + 1);
+  }
+
+  for (let i = 0; i < 5; i++) {
+    const tipV = assignment[i];
+    // Only check tips that serve exactly 1 edge (non-merged)
+    if ((tipEdgeCount.get(tipV) ?? 0) > 1) continue;
     const tipPt = vertices[tipV];
     const pA = vertices[pentCycle[i]];
     const pB = vertices[pentCycle[(i + 1) % 5]];
-    // Midpoint of the pentagon edge
-    const edgeMid: Point = { x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 };
-    // The tip should be on the opposite side of the edge from the centroid.
-    // Check using cross product: if the tip and centroid are on the same side
-    // of the edge line, the triangle is pointing inward.
     const edgeDx = pB.x - pA.x;
     const edgeDy = pB.y - pA.y;
     const crossTip = edgeDx * (tipPt.y - pA.y) - edgeDy * (tipPt.x - pA.x);
