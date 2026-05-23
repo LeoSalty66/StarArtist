@@ -1,13 +1,13 @@
 import type { Line, Point } from '../canvas/types';
+import { lineToPath } from '../canvas/curveUtils';
 
 const CANVAS_SIZE = 600;
 const STROKE_WIDTH = 4;
-const VERTEX_NEAR = 8;
 
 /**
- * Generate fill overlays using shape isolation:
- * For each face, render ONLY that face's boundary, then flood fill.
- * A valid fill never hits the canvas edge.
+ * Generate fill overlays using ALL lines as boundary.
+ * After each shape is filled, mark those pixels as "claimed" so
+ * subsequent shapes can't fill into already-claimed regions.
  */
 export function generateFillOverlays(
   pentCycle: number[],
@@ -15,45 +15,9 @@ export function generateFillOverlays(
   vertices: Point[],
   lines: Line[],
 ): { pentagonDataUrl: string; triangleDataUrls: string[]; debug: string } | null {
-  const exploded = explodeAtCorners(lines);
   const debugLines: string[] = ['=== FLOOD FILL DEBUG ==='];
-  debugLines.push(`Lines rendered (exploded): ${exploded.length}`);
 
-  // Pentagon
-  const pentPoints = pentCycle.map((i) => vertices[i]);
-  const pentCenter = centroid(pentPoints);
-  debugLines.push(`\nPENTAGON centroid: (${pentCenter.x.toFixed(1)}, ${pentCenter.y.toFixed(1)})`);
-  const pentBoundary = renderFaceBoundary(pentCycle, vertices, exploded);
-  const pentSeed = findValidSeed(pentBoundary, pentCenter);
-  debugLines.push(`Pentagon seed: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
-  const pentDataUrl = pentSeed ? doFloodFill(pentBoundary, pentSeed, 'rgba(126, 200, 227, 0.3)') : '';
-  debugLines.push(`Pentagon fill: ${pentDataUrl ? 'SUCCESS' : 'FAILED'}`);
-
-  // Triangles
-  const triDataUrls: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    const triVerts = [pentCycle[i], tipAssignment[i], pentCycle[(i + 1) % 5]];
-    const triPoints = triVerts.map((v) => vertices[v]);
-    const triCenter = centroid(triPoints);
-    debugLines.push(`\nTRIANGLE ${i} vertices: [${triVerts.join(', ')}]`);
-    debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
-    const triBoundary = renderFaceBoundary(triVerts, vertices, exploded);
-    const triSeed = findValidSeed(triBoundary, triCenter);
-    debugLines.push(`  seed: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
-    const triDataUrl = triSeed ? doFloodFill(triBoundary, triSeed, 'rgba(176, 136, 249, 0.2)') : '';
-    debugLines.push(`  fill: ${triDataUrl ? 'SUCCESS' : 'FAILED'}`);
-    triDataUrls.push(triDataUrl);
-  }
-
-  return { pentagonDataUrl: pentDataUrl, triangleDataUrls: triDataUrls, debug: debugLines.join('\n') };
-}
-
-/**
- * Render only the boundary of a single face onto a canvas.
- * A face is defined by vertex indices. We find and draw the path between
- * each consecutive pair of vertices.
- */
-function renderFaceBoundary(faceVertexIndices: number[], vertices: Point[], explodedLines: Line[]): ImageData {
+  // Render ALL lines as boundary.
   const canvas = document.createElement('canvas');
   canvas.width = CANVAS_SIZE;
   canvas.height = CANVAS_SIZE;
@@ -64,61 +28,70 @@ function renderFaceBoundary(faceVertexIndices: number[], vertices: Point[], expl
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  for (let i = 0; i < faceVertexIndices.length; i++) {
-    const fromPt = vertices[faceVertexIndices[i]];
-    const toPt = vertices[faceVertexIndices[(i + 1) % faceVertexIndices.length]];
-    drawEdge(ctx, fromPt, toPt, explodedLines);
+  for (const l of lines) {
+    const pathStr = lineToPath(l);
+    try {
+      const path2d = new Path2D(pathStr);
+      ctx.stroke(path2d);
+    } catch {
+      ctx.beginPath();
+      ctx.moveTo(l.a.x, l.a.y);
+      ctx.lineTo(l.b.x, l.b.y);
+      ctx.stroke();
+    }
   }
 
-  return ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  // Get mutable boundary data. We'll mark filled pixels as boundary after each fill.
+  const boundaryData = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  debugLines.push(`Lines rendered: ${lines.length}`);
+
+  // Fill pentagon first (typically the innermost region).
+  const pentPoints = pentCycle.map((i) => vertices[i]);
+  const pentCenter = centroid(pentPoints);
+  debugLines.push(`\nPENTAGON centroid: (${pentCenter.x.toFixed(1)}, ${pentCenter.y.toFixed(1)})`);
+  const pentSeed = findValidSeed(boundaryData, pentCenter);
+  debugLines.push(`Pentagon seed: ${pentSeed ? `(${pentSeed.x}, ${pentSeed.y})` : 'NONE'}`);
+  let pentDataUrl = '';
+  if (pentSeed) {
+    const { dataUrl, filledIndices } = doFloodFill(boundaryData, pentSeed, 'rgba(126, 200, 227, 0.3)');
+    pentDataUrl = dataUrl;
+    // Mark filled pixels as boundary so triangles don't fill into pentagon.
+    markAsBoundary(boundaryData, filledIndices);
+    debugLines.push(`Pentagon fill: SUCCESS (${filledIndices.length} pixels)`);
+  } else {
+    debugLines.push(`Pentagon fill: FAILED`);
+  }
+
+  // Fill triangles.
+  const triDataUrls: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const triVerts = [pentCycle[i], tipAssignment[i], pentCycle[(i + 1) % 5]];
+    const triPoints = triVerts.map((v) => vertices[v]);
+    const triCenter = centroid(triPoints);
+    debugLines.push(`\nTRIANGLE ${i} vertices: [${triVerts.join(', ')}]`);
+    debugLines.push(`  centroid: (${triCenter.x.toFixed(1)}, ${triCenter.y.toFixed(1)})`);
+    const triSeed = findValidSeed(boundaryData, triCenter);
+    debugLines.push(`  seed: ${triSeed ? `(${triSeed.x}, ${triSeed.y})` : 'NONE'}`);
+    if (triSeed) {
+      const { dataUrl, filledIndices } = doFloodFill(boundaryData, triSeed, 'rgba(176, 136, 249, 0.2)');
+      triDataUrls.push(dataUrl);
+      // Mark this triangle's pixels as boundary so other triangles can't overlap.
+      markAsBoundary(boundaryData, filledIndices);
+      debugLines.push(`  fill: SUCCESS (${filledIndices.length} pixels)`);
+    } else {
+      triDataUrls.push('');
+      debugLines.push(`  fill: FAILED`);
+    }
+  }
+
+  return { pentagonDataUrl: pentDataUrl, triangleDataUrls: triDataUrls, debug: debugLines.join('\n') };
 }
 
-/**
- * Draw the path between two vertices by finding the best matching line segment.
- * Renders directly using canvas lineTo for each pathPoint.
- */
-function drawEdge(ctx: CanvasRenderingContext2D, from: Point, to: Point, lines: Line[]): void {
-  // Find the line whose path goes between these two points.
-  let bestLine: { pts: Point[]; dist: number } | null = null;
-
-  for (const l of lines) {
-    const pts = l.pathPoints && l.pathPoints.length >= 2 ? l.pathPoints : [l.a, l.b];
-
-    // Check if this line's endpoints are near from/to
-    const dAFrom = Math.hypot(pts[0].x - from.x, pts[0].y - from.y);
-    const dBTo = Math.hypot(pts[pts.length - 1].x - to.x, pts[pts.length - 1].y - to.y);
-    const dATo = Math.hypot(pts[0].x - to.x, pts[0].y - to.y);
-    const dBFrom = Math.hypot(pts[pts.length - 1].x - from.x, pts[pts.length - 1].y - from.y);
-
-    // Forward match
-    if (dAFrom < VERTEX_NEAR && dBTo < VERTEX_NEAR) {
-      const dist = dAFrom + dBTo;
-      if (!bestLine || dist < bestLine.dist) {
-        bestLine = { pts, dist };
-      }
-    }
-    // Reverse match
-    if (dATo < VERTEX_NEAR && dBFrom < VERTEX_NEAR) {
-      const dist = dATo + dBFrom;
-      if (!bestLine || dist < bestLine.dist) {
-        bestLine = { pts: [...pts].reverse(), dist };
-      }
-    }
+/** Mark pixel indices as boundary (opaque) so future fills can't enter them. */
+function markAsBoundary(data: ImageData, indices: number[]): void {
+  for (const idx of indices) {
+    data.data[idx * 4 + 3] = 255;
   }
-
-  // Draw the path
-  ctx.beginPath();
-  if (bestLine && bestLine.pts.length >= 2) {
-    ctx.moveTo(bestLine.pts[0].x, bestLine.pts[0].y);
-    for (let i = 1; i < bestLine.pts.length; i++) {
-      ctx.lineTo(bestLine.pts[i].x, bestLine.pts[i].y);
-    }
-  } else {
-    // Fallback: straight line
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
-  }
-  ctx.stroke();
 }
 
 function findValidSeed(boundaryData: ImageData, center: Point): Point | null {
@@ -167,7 +140,7 @@ function isFloodBounded(boundaryData: ImageData, sx: number, sy: number): boolea
   return count > 5;
 }
 
-function doFloodFill(boundaryData: ImageData, seed: Point, color: string): string {
+function doFloodFill(boundaryData: ImageData, seed: Point, color: string): { dataUrl: string; filledIndices: number[] } {
   const w = boundaryData.width;
   const h = boundaryData.height;
   const sx = Math.round(seed.x);
@@ -190,7 +163,7 @@ function doFloodFill(boundaryData: ImageData, seed: Point, color: string): strin
     queue.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
 
-  if (filled.length === 0) return '';
+  if (filled.length === 0) return { dataUrl: '', filledIndices: [] };
 
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = 1; tempCanvas.height = 1;
@@ -213,7 +186,7 @@ function doFloodFill(boundaryData: ImageData, seed: Point, color: string): strin
   }
 
   fCtx.putImageData(fillData, 0, 0);
-  return fillCanvas.toDataURL();
+  return { dataUrl: fillCanvas.toDataURL(), filledIndices: filled };
 }
 
 function centroid(points: Point[]): Point {
@@ -222,28 +195,4 @@ function centroid(points: Point[]): Point {
     x: points.reduce((s, p) => s + p.x, 0) / n,
     y: points.reduce((s, p) => s + p.y, 0) / n,
   };
-}
-
-function explodeAtCorners(lines: Line[]): Line[] {
-  const result: Line[] = [];
-  for (const l of lines) {
-    if (!l.pathPoints || !l.cornerIndices || l.cornerIndices.length <= 2) {
-      result.push(l);
-      continue;
-    }
-    const sorted = [...l.cornerIndices].sort((a, b) => a - b);
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const startIdx = sorted[i];
-      const endIdx = sorted[i + 1];
-      const subPoints = l.pathPoints.slice(startIdx, endIdx + 1);
-      if (subPoints.length < 2) continue;
-      result.push({
-        id: `${l.id}__seg${i}`,
-        a: subPoints[0],
-        b: subPoints[subPoints.length - 1],
-        pathPoints: subPoints,
-      });
-    }
-  }
-  return result;
 }
