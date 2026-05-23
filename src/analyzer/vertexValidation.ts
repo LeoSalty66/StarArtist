@@ -30,6 +30,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     pentagonVertices: [],
     tipVertices: [],
     edgeCount: 0,
+    edgeMultiplicity: new Map(),
   };
 
   if (lines.length === 0) return { ...empty, message: 'No lines drawn.' };
