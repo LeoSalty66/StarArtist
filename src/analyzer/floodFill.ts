@@ -99,8 +99,8 @@ function findValidSeed(boundaryData: ImageData, center: Point): Point | null {
   const h = boundaryData.height;
 
   const candidates: Point[] = [center];
-  for (let r = 2; r < 60; r += 2) {
-    for (let angle = 0; angle < 360; angle += 15) {
+  for (let r = 2; r < 150; r += 2) {
+    for (let angle = 0; angle < 360; angle += 10) {
       const rad = angle * Math.PI / 180;
       candidates.push({ x: center.x + r * Math.cos(rad), y: center.y + r * Math.sin(rad) });
     }
