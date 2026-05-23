@@ -1,7 +1,9 @@
 import type { Line, Point } from '../canvas/types';
 import { getLineSegments, findLineIntersections, findSelfIntersections } from '../canvas/geometry';
+import { lineToPath } from '../canvas/curveUtils';
 
 const VERTEX_MERGE_DISTANCE = 6; // pixels
+const INSIDE_CHECK_CANVAS_SIZE = 600;
 
 export interface VertexValidationResult {
   isValidStar: boolean;
@@ -163,7 +165,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   let bestCycle = allCycles[0];
 
   for (const pentCycle of allCycles) {
-    const validation = validateWithCycle(pentCycle, vertices, adjacency, seenEdges, edgeMultiplicity);
+    const validation = validateWithCycle(pentCycle, vertices, adjacency, seenEdges, edgeMultiplicity, exploded);
     if (validation.valid) {
       result.isValidStar = true;
       result.pentagonVertices = pentCycle;
@@ -197,6 +199,7 @@ function validateWithCycle(
   adjacency: Map<number, Set<number>>,
   seenEdges: Set<string>,
   edgeMultiplicity: Map<string, number>,
+  lines: Line[],
 ): CycleValidation {
   const pentSet = new Set(pentCycle);
   const n = vertices.length;
@@ -225,7 +228,7 @@ function validateWithCycle(
 
   // Try all valid tip assignments using backtracking.
   const assignment: number[] = new Array(5).fill(-1);
-  const validAssignment = backtrackAssign(0, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices);
+  const validAssignment = backtrackAssign(0, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices, lines);
 
   if (validAssignment) {
     return { valid: true, tipsFound: 5, failReason: '', assignment: [...assignment] };
@@ -247,15 +250,15 @@ function backtrackAssign(
   seenEdges: Set<string>,
   edgeMultiplicity: Map<string, number>,
   vertices: Point[],
+  lines: Line[],
 ): boolean {
   if (edgeIdx === 5) {
-    // Complete assignment: validate it.
-    return checkAssignment(assignment, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices);
+    return checkAssignment(assignment, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices, lines);
   }
 
   for (const cand of candidates[edgeIdx]) {
     assignment[edgeIdx] = cand;
-    if (backtrackAssign(edgeIdx + 1, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices)) {
+    if (backtrackAssign(edgeIdx + 1, assignment, candidates, pentCycle, adjacency, seenEdges, edgeMultiplicity, vertices, lines)) {
       return true;
     }
   }
@@ -274,6 +277,7 @@ function checkAssignment(
   seenEdges: Set<string>,
   edgeMultiplicity: Map<string, number>,
   vertices: Point[],
+  lines: Line[],
 ): boolean {
   // Build required edges from the assignment.
   const requiredPairs = new Set<string>();
@@ -302,9 +306,9 @@ function checkAssignment(
     if (!seenEdges.has(key)) return false;
   }
 
-  // Note: inside-the-pentagon check disabled for now.
-  // The centroid-based heuristic produces false rejections with non-convex pentagons
-  // and curved lines. Will be replaced with proper boundary-based check later.
+  // Check: no tip vertex is inside the pentagon using flood-fill.
+  // Render only pentagon edges, then flood from each tip. If bounded → inside → invalid.
+  if (!areTipsOutsidePentagon(assignment, pentCycle, vertices, lines)) return false;
 
   return true;
 }
@@ -500,4 +504,133 @@ function allDistancesAlongLine(p: Point, l: Line): number[] {
   }
 
   return results;
+}
+
+
+/**
+ * Check that all tip vertices are OUTSIDE the pentagon by rendering only the
+ * pentagon's edges and flood-filling from each tip. If a fill stays bounded
+ * (doesn't hit canvas edge), the tip is inside → invalid.
+ */
+function areTipsOutsidePentagon(
+  assignment: number[],
+  pentCycle: number[],
+  vertices: Point[],
+  lines: Line[],
+): boolean {
+  // Render pentagon edges on a hidden canvas.
+  const canvas = document.createElement('canvas');
+  canvas.width = INSIDE_CHECK_CANVAS_SIZE;
+  canvas.height = INSIDE_CHECK_CANVAS_SIZE;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, INSIDE_CHECK_CANVAS_SIZE, INSIDE_CHECK_CANVAS_SIZE);
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Draw each pentagon edge using the original lines' paths.
+  for (let i = 0; i < 5; i++) {
+    const fromPt = vertices[pentCycle[i]];
+    const toPt = vertices[pentCycle[(i + 1) % 5]];
+    drawPentagonEdge(ctx, fromPt, toPt, lines);
+  }
+
+  const boundaryData = ctx.getImageData(0, 0, INSIDE_CHECK_CANVAS_SIZE, INSIDE_CHECK_CANVAS_SIZE);
+  const w = INSIDE_CHECK_CANVAS_SIZE;
+  const h = INSIDE_CHECK_CANVAS_SIZE;
+
+  // For each unique tip, check if it's outside.
+  const checkedTips = new Set<number>();
+  for (const tipV of assignment) {
+    if (checkedTips.has(tipV)) continue;
+    checkedTips.add(tipV);
+
+    const tipPt = vertices[tipV];
+    const tx = Math.round(tipPt.x);
+    const ty = Math.round(tipPt.y);
+    if (tx < 0 || tx >= w || ty < 0 || ty >= h) continue; // Off-canvas = outside
+
+    // If the tip is on a boundary pixel, nudge slightly
+    let sx = tx, sy = ty;
+    if (boundaryData.data[((sy * w + sx) * 4) + 3] > 50) {
+      // Try small offsets
+      const offsets = [[1,0],[-1,0],[0,1],[0,-1],[2,0],[-2,0],[0,2],[0,-2]];
+      let found = false;
+      for (const [dx, dy] of offsets) {
+        const nx = sx + dx, ny = sy + dy;
+        if (nx >= 0 && nx < w && ny >= 0 && ny < h && boundaryData.data[((ny * w + nx) * 4) + 3] <= 50) {
+          sx = nx; sy = ny; found = true; break;
+        }
+      }
+      if (!found) continue; // Can't test, skip
+    }
+
+    // Flood from tip. If it DOESN'T hit the edge, it's inside → invalid.
+    const hitsEdge = floodHitsEdge(boundaryData, sx, sy, w, h);
+    if (!hitsEdge) return false; // Tip is inside the pentagon
+  }
+
+  return true; // All tips are outside
+}
+
+function drawPentagonEdge(ctx: CanvasRenderingContext2D, from: Point, to: Point, lines: Line[]): void {
+  // Find the line whose path connects these two vertices (best match).
+  const NEAR = 10;
+  let bestPts: Point[] | null = null;
+  let bestLen = Infinity;
+
+  for (const l of lines) {
+    const pts = l.pathPoints && l.pathPoints.length >= 2 ? l.pathPoints : [l.a, l.b];
+    const fromIndices: number[] = [];
+    const toIndices: number[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (Math.hypot(pts[i].x - from.x, pts[i].y - from.y) < NEAR) fromIndices.push(i);
+      if (Math.hypot(pts[i].x - to.x, pts[i].y - to.y) < NEAR) toIndices.push(i);
+    }
+    for (const fi of fromIndices) {
+      for (const ti of toIndices) {
+        if (fi === ti) continue;
+        const startIdx = Math.min(fi, ti);
+        const endIdx = Math.max(fi, ti);
+        const sub = pts.slice(startIdx, endIdx + 1);
+        let len = 0;
+        for (let k = 1; k < sub.length; k++) len += Math.hypot(sub[k].x - sub[k-1].x, sub[k].y - sub[k-1].y);
+        if (len < bestLen) { bestLen = len; bestPts = fi < ti ? sub : [...sub].reverse(); }
+      }
+    }
+  }
+
+  ctx.beginPath();
+  if (bestPts && bestPts.length >= 2) {
+    ctx.moveTo(bestPts[0].x, bestPts[0].y);
+    for (let i = 1; i < bestPts.length; i++) ctx.lineTo(bestPts[i].x, bestPts[i].y);
+  } else {
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+  }
+  ctx.stroke();
+}
+
+function floodHitsEdge(data: ImageData, sx: number, sy: number, w: number, h: number): boolean {
+  const visited = new Uint8Array(w * h);
+  const queue: number[] = [sx, sy];
+  let head = 0;
+  let count = 0;
+  const maxPixels = 80000;
+
+  while (head < queue.length && count < maxPixels) {
+    const x = queue[head++];
+    const y = queue[head++];
+    if (x <= 0 || x >= w - 1 || y <= 0 || y >= h - 1) return true; // Hit edge!
+    const idx = y * w + x;
+    if (visited[idx]) continue;
+    if (data.data[idx * 4 + 3] > 50) continue;
+    visited[idx] = 1;
+    count++;
+    queue.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
+  }
+
+  // If maxPixels hit without reaching edge, assume inside (bounded = inside)
+  return false;
 }
