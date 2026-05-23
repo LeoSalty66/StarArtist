@@ -11,6 +11,7 @@ export interface VertexValidationResult {
   pentagonVertices: number[];
   tipVertices: number[];
   edgeCount: number;
+  edgeMultiplicity: Map<string, number>;
 }
 
 /**
@@ -127,6 +128,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     pentagonVertices: [],
     tipVertices: [],
     edgeCount,
+    edgeMultiplicity,
   };
 
   if (vertices.length < 6) {

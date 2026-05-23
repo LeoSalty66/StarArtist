@@ -26,8 +26,21 @@ function TestScreen({ onBack }: Props) {
   const analysis = useMemo(() => analyze(drawing.lines), [drawing.lines]);
   const vResult = useMemo(() => vertexValidate(drawing.lines), [drawing.lines]);
 
-  // Use vertex validation only (old face-based analyzer disabled for now).
-  const locked = vResult.isValidStar;
+  // Use vertex validation as primary.
+  // Fall back to shared-edge triangle validation (old face-based analyzer)
+  // ONLY if no vertex pair has multiple edges (which would cause false positives).
+  let sharedEdgeValid = false;
+  if (!vResult.isValidStar) {
+    // Check if any pair has multiplicity > 1 (a "2-sided shape").
+    let hasMultiEdge = false;
+    for (const [, count] of vResult.edgeMultiplicity ?? new Map()) {
+      if (count > 1) { hasMultiEdge = true; break; }
+    }
+    if (!hasMultiEdge) {
+      sharedEdgeValid = analysis.isValidStar;
+    }
+  }
+  const locked = vResult.isValidStar || sharedEdgeValid;
 
   // Activate line boil after the fill animation finishes
   useEffect(() => {
