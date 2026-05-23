@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Line, Point } from './types';
-import { extractShapeBoundaries } from '../analyzer/shapeBoundaries';
+import { generateFillOverlays } from '../analyzer/floodFill';
 
 interface Props {
   pentCycle: number[];
@@ -10,19 +10,17 @@ interface Props {
 }
 
 /**
- * Success overlay that fills in the actual curved shapes
- * using the drawn paths as boundaries.
+ * Success overlay using flood-fill: renders actual enclosed regions
+ * by filling from seed points on a hidden canvas.
  */
 function CurvedSuccessOverlay({ pentCycle, tipAssignment, vertices, lines }: Props) {
   const [step, setStep] = useState(0);
-  const [boilActive, setBoilActive] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setStep((s) => {
         if (s >= 6) {
           clearInterval(timer);
-          setTimeout(() => setBoilActive(true), 200);
           return s;
         }
         return s + 1;
@@ -31,11 +29,15 @@ function CurvedSuccessOverlay({ pentCycle, tipAssignment, vertices, lines }: Pro
     return () => clearInterval(timer);
   }, []);
 
-  const boundaries = extractShapeBoundaries(pentCycle, tipAssignment, vertices, lines);
-  if (!boundaries) return null;
+  // Generate fill overlays once on mount.
+  const overlays = useMemo(() => {
+    return generateFillOverlays(pentCycle, tipAssignment, vertices, lines);
+  }, [pentCycle, tipAssignment, vertices, lines]);
+
+  if (!overlays) return null;
 
   return (
-    <g className={`success-overlay ${boilActive ? 'boil-active' : ''}`}>
+    <g className="success-overlay">
       {/* Boil filters */}
       <defs>
         <filter id="boil-1" x="-5%" y="-5%" width="110%" height="110%">
@@ -53,19 +55,27 @@ function CurvedSuccessOverlay({ pentCycle, tipAssignment, vertices, lines }: Pro
       </defs>
 
       {/* Pentagon fill */}
-      {step >= 1 && (
-        <path
-          d={boundaries.pentagon.path}
+      {step >= 1 && overlays.pentagonDataUrl && (
+        <image
+          href={overlays.pentagonDataUrl}
+          x="0"
+          y="0"
+          width="600"
+          height="600"
           className="fill-pentagon"
         />
       )}
 
       {/* Triangle fills, one at a time */}
-      {boundaries.triangles.map((tri, i) =>
-        step >= i + 2 ? (
-          <path
+      {overlays.triangleDataUrls.map((dataUrl, i) =>
+        step >= i + 2 && dataUrl ? (
+          <image
             key={i}
-            d={tri.path}
+            href={dataUrl}
+            x="0"
+            y="0"
+            width="600"
+            height="600"
             className="fill-triangle"
           />
         ) : null,
