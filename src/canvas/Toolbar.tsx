@@ -10,6 +10,8 @@ interface Props {
   canRedo: boolean;
   lineCount: number;
   onExport?: () => void;
+  /** Optional portrait image URL to display at the bottom of the toolbar. */
+  portrait?: string;
 }
 
 function Toolbar({
@@ -22,6 +24,7 @@ function Toolbar({
   canRedo,
   lineCount,
   onExport,
+  portrait,
 }: Props) {
   return (
     <div className="toolbar">
@@ -39,13 +42,6 @@ function Toolbar({
           title="Move (drag an endpoint to reposition)"
         >
           Move
-        </button>
-        <button
-          className={`tool-btn ${tool === 'bend' ? 'active' : ''}`}
-          onClick={() => onToolChange('bend')}
-          title="Bend (drag a line to curve it)"
-        >
-          Bend
         </button>
         <button
           className={`tool-btn ${tool === 'eraser' ? 'active' : ''}`}
@@ -96,9 +92,11 @@ function Toolbar({
         </div>
       )}
 
-      <div className="toolbar-info">
-        {lineCount} {lineCount === 1 ? 'line' : 'lines'}
-      </div>
+      {portrait && (
+        <div className="toolbar-portrait">
+          <img src={portrait} alt="Character" />
+        </div>
+      )}
     </div>
   );
 }

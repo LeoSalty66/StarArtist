@@ -63,6 +63,7 @@ let buffers: AudioBuffer[] = [];
 let loaded = false;
 let shortIdxs: Set<number> = new Set();
 let longIdxs: Set<number> = new Set();
+let long20Idxs: Set<number> = new Set();
 
 /** Preload all voice clips into audio buffers. */
 export async function preloadVoice(): Promise<void> {
@@ -77,25 +78,30 @@ export async function preloadVoice(): Promise<void> {
   loaded = true;
 
   // Identify the 10 shortest and 10 longest clips by duration.
+  // Also track the top 20 longest for additional gap reduction.
   const indexed = buffers.map((b, i) => ({ i, dur: b.duration }));
   indexed.sort((a, b) => a.dur - b.dur);
   shortIdxs = new Set(indexed.slice(0, 10).map((x) => x.i));
   longIdxs = new Set(indexed.slice(-10).map((x) => x.i));
+  long20Idxs = new Set(indexed.slice(-20).map((x) => x.i));
 }
 
 let lastClipIdx = -1;
 let lastClipCategory: 'short' | 'long' | 'mid' = 'mid';
+let recentClips: number[] = [];
 
-/** Play a single random clip (never the same one twice in a row). */
+/** Play a single random clip (never one that was in the last 3 used). */
 function playRandomClip(): void {
   if (!audioCtx || buffers.length === 0) return;
   let idx = Math.floor(Math.random() * buffers.length);
-  // Avoid repeating the same clip
-  if (buffers.length > 1) {
-    while (idx === lastClipIdx) {
+  // Avoid repeating any of the last 3 clips
+  if (buffers.length > 3) {
+    while (recentClips.includes(idx)) {
       idx = Math.floor(Math.random() * buffers.length);
     }
   }
+  recentClips.push(idx);
+  if (recentClips.length > 3) recentClips.shift();
   lastClipIdx = idx;
   lastClipCategory = longIdxs.has(idx) ? 'long' : shortIdxs.has(idx) ? 'short' : 'mid';
   const buf = buffers[idx];
@@ -113,13 +119,16 @@ function playRandomClip(): void {
 
 let babbleInterval: number | null = null;
 let syllablesLeft = 0;
+let useWordPauses = false;
 
 /**
- * Start continuous babble: clusters of 3-8 syllables with pauses between.
- * Mimics natural speech rhythm.
+ * Start continuous babble.
+ * @param withPauses - If true, adds 400-800ms pauses between "word" clusters (3-8 syllables).
+ *                     Default is false (continuous stream with no pauses).
  */
-export function startBabble(): void {
+export function startBabble(withPauses = false): void {
   if (babbleInterval !== null) return;
+  useWordPauses = withPauses;
   preloadVoice().then(() => {
     scheduleNextSyllable();
   });
@@ -129,11 +138,16 @@ function scheduleNextSyllable(): void {
   if (syllablesLeft <= 0) {
     // Start a new "word": 3-8 syllables
     syllablesLeft = 3 + Math.floor(Math.random() * 6);
-    // Pause before starting the word (400-800ms)
-    const pause = 400 + Math.random() * 400;
-    babbleInterval = window.setTimeout(() => {
+    if (useWordPauses) {
+      // Pause before starting the word (400-800ms)
+      const pause = 400 + Math.random() * 400;
+      babbleInterval = window.setTimeout(() => {
+        playSyllableAndContinue();
+      }, pause);
+    } else {
+      // No pause — continue immediately
       playSyllableAndContinue();
-    }, pause);
+    }
   } else {
     playSyllableAndContinue();
   }
@@ -144,9 +158,11 @@ function playSyllableAndContinue(): void {
   playRandomClip();
   syllablesLeft--;
   // Time between syllables: adjust based on clip length category
-  let gap = 380 + Math.random() * 100;
+  let gap = 400 + Math.random() * 100;
   if (lastClipCategory === 'long') gap += 100;
-  else if (lastClipCategory === 'short') gap -= 100;
+  else if (lastClipCategory === 'short') gap -= 130; // -100 base, -30 extra
+  // Additional 50ms reduction for the 20 longest clips
+  if (long20Idxs.has(lastClipIdx)) gap -= 50;
   babbleInterval = window.setTimeout(() => {
     if (babbleInterval !== null) {
       scheduleNextSyllable();

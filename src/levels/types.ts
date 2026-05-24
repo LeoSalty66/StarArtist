@@ -1,3 +1,5 @@
+import type { DialogueSequence } from '../dialogue/types';
+
 /**
  * A level definition. Stored as JSON.
  *
@@ -18,6 +20,10 @@ export interface LevelData {
    * Used to correct coordinate distortion. Defaults to 1 (square).
    */
   sourceAspect?: number;
+  /** Dialogue shown before the player can draw. */
+  introDialogue?: DialogueSequence;
+  /** Dialogue shown after the player completes the star. */
+  completionDialogue?: DialogueSequence;
 }
 
 export interface NormalizedLine {

@@ -55,6 +55,7 @@ function App() {
           onBack={() => setScreen('levelSelect')}
           onComplete={() => {}}
           onMainMenu={() => setScreen('menu')}
+          onLevelSelect={() => setScreen('levelSelect')}
           onNextLevel={
             currentChapter === 1 && currentLevel < chapter1.length
               ? () => {

@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'OmoriGame';
+  src: url('/fonts/OMORI_GAME2.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -10,7 +18,7 @@ body,
 }
 
 body {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'OmoriGame', system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: #0a0e1a;
   color: #e0e8f0;
   -webkit-font-smoothing: antialiased;
@@ -20,6 +28,30 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
+  padding-left: 160px;
+  padding-right: 160px;
+  position: relative;
+}
+
+/* Permanent side borders — always on top, every page */
+.app::before,
+.app::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 160px;
+  background: #131b2e;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.app::before {
+  left: 0;
+}
+
+.app::after {
+  right: 0;
 }
 
 /* ---------- Menu screen ---------- */
@@ -186,32 +218,50 @@ body {
 .toolbar {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.25rem;
+  gap: 1.5rem;
+  padding: 1.5rem;
   background: #0f1525;
-  border-left: 1px solid rgba(126, 200, 227, 0.12);
-  width: 160px;
+  border-right: 1px solid rgba(126, 200, 227, 0.12);
+  width: 288px;
   flex-shrink: 0;
+  order: -1;
 }
 
 .toolbar-group {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
 }
 
 .toolbar-info {
-  font-size: 0.85rem;
+  font-size: 1.1rem;
   opacity: 0.7;
   text-align: center;
   margin-top: auto;
 }
 
+/* Portrait in toolbar */
+.toolbar-portrait {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolbar-portrait img {
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  border-radius: 10px;
+  border: 2px solid rgba(126, 200, 227, 0.3);
+  background: rgba(126, 200, 227, 0.05);
+}
+
 .tool-btn {
-  padding: 0.5rem 0.9rem;
-  font-size: 0.95rem;
+  padding: 0.8rem 1.2rem;
+  font-size: 1.2rem;
   border: 1px solid rgba(126, 200, 227, 0.2);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(126, 200, 227, 0.04);
   color: #e0e8f0;
   cursor: pointer;
@@ -252,23 +302,18 @@ body {
 .canvas-wrapper {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  background: #0a0e1a;
+  align-items: stretch;
+  justify-content: stretch;
+  background: #040810;
   position: relative;
   overflow: hidden;
-  padding: 1rem;
-  padding-left: 2rem;
 }
 
 .drawing-canvas {
   width: 100%;
-  max-width: min(100%, 80vh);
-  max-height: 100%;
-  aspect-ratio: 1;
+  height: 100%;
   background: #040810;
   border: 1px solid rgba(126, 200, 227, 0.15);
-  border-radius: 8px;
   user-select: none;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.4);
 }

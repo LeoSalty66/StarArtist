@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import type { Line, Point, Tool } from './types';
 import { dist, findSnap, findLineIntersections, type SnapTarget } from './geometry';
-import { lineToPath, closestPointOnCurve } from './curveUtils';
+import { lineToPath } from './curveUtils';
 import { processStroke } from './strokeProcessor';
 
 interface Props {
@@ -14,22 +14,15 @@ interface Props {
   locked?: boolean;
   boilActive?: boolean;
   successOverlay?: React.ReactNode;
+  /** Show colored debug dots at endpoints, corners, and intersections. Default true. */
+  showDebugDots?: boolean;
 }
 
 const MIN_STROKE_LENGTH = 10;
 const MOVE_GRAB_RADIUS = 14;
-const BEND_GRAB_RADIUS = 12;
-const BEND_LINE_RADIUS = 16;
 
 interface MoveState {
   targets: { lineId: string; endpoint: 'a' | 'b' }[];
-  current: Point;
-}
-
-interface BendState {
-  lineId: string;
-  cpIndex: number | null;
-  insertT: number;
   current: Point;
 }
 
@@ -39,16 +32,15 @@ function DrawingCanvas({
   onAddLine,
   onRemoveLine,
   onMovePoint,
-  onBend,
   locked,
   boilActive,
   successOverlay,
+  showDebugDots = true,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
   const [snap, setSnap] = useState<SnapTarget | null>(null);
   const [moveState, setMoveState] = useState<MoveState | null>(null);
-  const [bendState, setBendState] = useState<BendState | null>(null);
   // Freehand pen state
   const [isDrawing, setIsDrawing] = useState(false);
   const rawPointsRef = useRef<Point[]>([]);
@@ -58,7 +50,6 @@ function DrawingCanvas({
     setIsDrawing(false);
     setPreviewPoints([]);
     setMoveState(null);
-    setBendState(null);
   }, [tool]);
 
   useEffect(() => {
@@ -67,7 +58,6 @@ function DrawingCanvas({
         setIsDrawing(false);
         setPreviewPoints([]);
         setMoveState(null);
-        setBendState(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -119,31 +109,6 @@ function DrawingCanvas({
       if (targets.length === 0) return;
       setMoveState({ targets, current: bestPoint });
       (e.target as Element).setPointerCapture?.(e.pointerId);
-    } else if (tool === 'bend') {
-      for (const l of lines) {
-        if (!l.controlPoints) continue;
-        for (let i = 0; i < l.controlPoints.length; i++) {
-          if (dist(raw, l.controlPoints[i]) <= BEND_GRAB_RADIUS) {
-            setBendState({ lineId: l.id, cpIndex: i, insertT: 0, current: raw });
-            (e.target as Element).setPointerCapture?.(e.pointerId);
-            return;
-          }
-        }
-      }
-      let bestLine: Line | null = null;
-      let bestDist = Infinity;
-      let bestT = 0;
-      for (const l of lines) {
-        const { t, distance } = closestPointOnCurve(raw, l);
-        if (distance < bestDist) {
-          bestDist = distance;
-          bestLine = l;
-          bestT = t;
-        }
-      }
-      if (!bestLine || bestDist > BEND_LINE_RADIUS) return;
-      setBendState({ lineId: bestLine.id, cpIndex: null, insertT: bestT, current: raw });
-      (e.target as Element).setPointerCapture?.(e.pointerId);
     }
   };
 
@@ -185,10 +150,6 @@ function DrawingCanvas({
 
     if (tool === 'move' && moveState) {
       setMoveState({ ...moveState, current: raw });
-      return;
-    }
-    if (tool === 'bend' && bendState) {
-      setBendState({ ...bendState, current: raw });
       return;
     }
 
@@ -251,14 +212,6 @@ function DrawingCanvas({
       setMoveState(null);
       return;
     }
-
-    if (tool === 'bend' && bendState) {
-      const raw = getSvgPoint(e.clientX, e.clientY);
-      const finalPoint = raw ?? bendState.current;
-      onBend(bendState.lineId, bendState.cpIndex, finalPoint);
-      setBendState(null);
-      return;
-    }
   };
 
   const handlePointerLeave = () => {
@@ -272,7 +225,7 @@ function DrawingCanvas({
     onRemoveLine(id);
   };
 
-  // Preview: apply move/bend state for real-time feedback.
+  // Preview: apply move state for real-time feedback.
   const displayLines = (() => {
     let result = lines;
     if (moveState) {
@@ -284,19 +237,6 @@ function DrawingCanvas({
           if (t.lineId === l.id && t.endpoint === 'b') newB = moveState.current;
         }
         return { ...l, a: newA, b: newB };
-      });
-    }
-    if (bendState) {
-      result = result.map((l) => {
-        if (l.id !== bendState.lineId) return l;
-        const cps = [...(l.controlPoints ?? [])];
-        if (bendState.cpIndex !== null) {
-          cps[bendState.cpIndex] = bendState.current;
-        } else {
-          const insertIdx = getInsertIndex(cps, bendState.insertT);
-          cps.splice(insertIdx, 0, bendState.current);
-        }
-        return { ...l, controlPoints: cps };
       });
     }
     return result;
@@ -356,52 +296,27 @@ function DrawingCanvas({
               strokeLinejoin="round"
               pointerEvents="none"
             />
-            {/* Show corners as small dots when bend tool is active */}
-            {tool === 'bend' && l.cornerIndices && l.pathPoints && l.cornerIndices.map((ci) => (
-              <circle
-                key={`${l.id}-corner-${ci}`}
-                cx={l.pathPoints![ci].x}
-                cy={l.pathPoints![ci].y}
-                r={4}
-                fill="#ef476f"
-                opacity={0.7}
-                pointerEvents="none"
-              />
-            ))}
-            {/* Always show endpoints as red dots for debugging */}
-            <circle cx={l.a.x} cy={l.a.y} r={4} fill="#ef476f" pointerEvents="none" />
-            <circle cx={l.b.x} cy={l.b.y} r={4} fill="#ef476f" pointerEvents="none" />
-            {/* Show internal corners as red dots */}
-            {l.cornerIndices && l.pathPoints && l.cornerIndices
-              .filter((ci) => ci !== 0 && ci !== l.pathPoints!.length - 1)
-              .map((ci) => (
-                <circle
-                  key={`${l.id}-corner-${ci}`}
-                  cx={l.pathPoints![ci].x}
-                  cy={l.pathPoints![ci].y}
-                  r={4}
-                  fill="#ef476f"
-                  pointerEvents="none"
-                />
-              ))}
+            {/* Debug dots: endpoints and corners */}
+            {showDebugDots && (
+              <>
+                <circle cx={l.a.x} cy={l.a.y} r={4} fill="#ef476f" pointerEvents="none" />
+                <circle cx={l.b.x} cy={l.b.y} r={4} fill="#ef476f" pointerEvents="none" />
+                {l.cornerIndices && l.pathPoints && l.cornerIndices
+                  .filter((ci) => ci !== 0 && ci !== l.pathPoints!.length - 1)
+                  .map((ci) => (
+                    <circle
+                      key={`${l.id}-corner-${ci}`}
+                      cx={l.pathPoints![ci].x}
+                      cy={l.pathPoints![ci].y}
+                      r={4}
+                      fill="#ef476f"
+                      pointerEvents="none"
+                    />
+                  ))}
+              </>
+            )}
           </g>
         );
-      })}
-
-      {/* Bend tool: show control points */}
-      {tool === 'bend' && displayLines.map((l) => {
-        if (!l.controlPoints || l.controlPoints.length === 0) return null;
-        return l.controlPoints.map((cp, i) => (
-          <circle
-            key={`${l.id}-cp-${i}`}
-            cx={cp.x}
-            cy={cp.y}
-            r={5}
-            fill="#7ec8e3"
-            opacity={0.7}
-            pointerEvents="none"
-          />
-        ));
       })}
 
       {/* Freehand preview while drawing */}
@@ -445,7 +360,7 @@ function DrawingCanvas({
       )}
 
       {/* Debug: intersection dots */}
-      {intersectionPoints.map((p, i) => (
+      {showDebugDots && intersectionPoints.map((p, i) => (
         <circle
           key={`ix-${i}`}
           cx={p.x}
@@ -460,12 +375,6 @@ function DrawingCanvas({
       {successOverlay}
     </svg>
   );
-}
-
-function getInsertIndex(existingCPs: Point[], t: number): number {
-  if (existingCPs.length === 0) return 0;
-  const idx = Math.round(t * existingCPs.length);
-  return Math.max(0, Math.min(existingCPs.length, idx));
 }
 
 function computePathLength(points: Point[]): number {

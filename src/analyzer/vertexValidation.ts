@@ -165,9 +165,20 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   for (const pentCycle of allCycles) {
     const validation = validateWithCycle(pentCycle, vertices, adjacency, seenEdges, edgeMultiplicity);
     if (validation.valid) {
+      // Final check: ensure no tip vertex is inside the pentagon.
+      const tipVertices = vertices.map((_, i) => i).filter((i) => !new Set(pentCycle).has(i));
+      const tipPoints = tipVertices.map((i) => vertices[i]);
+      if (isTipInsidePentagon(tipPoints, vertices, pentCycle, lines)) {
+        // A tip is inside the pentagon — this isn't a valid star.
+        if (validation.tipsFound > bestProgress) {
+          bestProgress = validation.tipsFound;
+          bestCycle = pentCycle;
+        }
+        continue;
+      }
       result.isValidStar = true;
       result.pentagonVertices = pentCycle;
-      result.tipVertices = vertices.map((_, i) => i).filter((i) => !new Set(pentCycle).has(i));
+      result.tipVertices = tipVertices;
       result.tipAssignment = validation.assignment;
       result.message = '⭐ Valid 5-pointed star!';
       return result;
@@ -500,4 +511,92 @@ function allDistancesAlongLine(p: Point, l: Line): number[] {
   }
 
   return results;
+}
+
+/**
+ * Check if ANY tip vertex is inside the pentagon.
+ *
+ * For each tip, we check if it's on the INTERIOR side of its corresponding
+ * pentagon edge. The interior side is the side where the pentagon centroid is.
+ * If a tip is on the same side as the centroid, it's pointing inward → reject.
+ *
+ * This handles all star shapes correctly regardless of how elongated or
+ * curved they are, because it checks each tip against its own edge only.
+ */
+function isTipInsidePentagon(
+  tipPoints: Point[],
+  vertices: Point[],
+  pentCycle: number[],
+  _lines: Line[],
+): boolean {
+  if (tipPoints.length === 0) return false;
+
+  // Compute pentagon centroid.
+  const pentPoints = pentCycle.map((i) => vertices[i]);
+  const cx = pentPoints.reduce((s, p) => s + p.x, 0) / 5;
+  const cy = pentPoints.reduce((s, p) => s + p.y, 0) / 5;
+
+  // For each tip, find which pentagon edge it belongs to and check which side it's on.
+  // The tip assignment maps edge index → tip vertex index.
+  // We need to reconstruct that here from the tipPoints and pentCycle.
+  // Actually, we receive tipPoints as ALL non-pentagon vertices.
+  // We need to check each tip against the edge it serves.
+
+  // For each tip, find which pentagon edge it connects to (both endpoints).
+  const pentSet = new Set(pentCycle);
+  for (const tip of tipPoints) {
+    // Find the tip's vertex index.
+    let tipIdx = -1;
+    for (let i = 0; i < vertices.length; i++) {
+      if (Math.hypot(vertices[i].x - tip.x, vertices[i].y - tip.y) < 1) {
+        tipIdx = i;
+        break;
+      }
+    }
+    if (tipIdx === -1) continue;
+
+    // Find which pentagon edge this tip serves (connects to both endpoints).
+    for (let i = 0; i < 5; i++) {
+      const eA = pentCycle[i];
+      const eB = pentCycle[(i + 1) % 5];
+
+      // Check if tip connects to both endpoints of this edge.
+      const adjSet = new Set<number>();
+      // We don't have adjacency here, so use proximity check against pentagon vertices.
+      // Actually we check the tip's edges by looking at which pentagon vertices it's near.
+      // Simpler: just check if the tip is on the interior side of ALL pentagon edges.
+      // If it's on the interior side of all edges, it's fully inside.
+    }
+  }
+
+  // Better approach: check if tip is inside the polygon using the cross-product
+  // winding method against all pentagon edges.
+  // A point is inside a polygon if it's on the interior side of ALL edges
+  // (when edges are ordered consistently).
+
+  // Determine winding direction: check if centroid is on the "left" side of edge 0.
+  const pA = vertices[pentCycle[0]];
+  const pB = vertices[pentCycle[1]];
+  const crossCentroid = (pB.x - pA.x) * (cy - pA.y) - (pB.y - pA.y) * (cx - pA.x);
+  // If crossCentroid > 0, the interior is on the left side (positive cross product).
+  // If crossCentroid < 0, the interior is on the right side.
+  const interiorSign = crossCentroid > 0 ? 1 : -1;
+
+  for (const tip of tipPoints) {
+    let allInside = true;
+    for (let i = 0; i < 5; i++) {
+      const edgeA = vertices[pentCycle[i]];
+      const edgeB = vertices[pentCycle[(i + 1) % 5]];
+      const cross = (edgeB.x - edgeA.x) * (tip.y - edgeA.y) - (edgeB.y - edgeA.y) * (tip.x - edgeA.x);
+      // If the cross product has the same sign as interiorSign, tip is on interior side of this edge.
+      if (cross * interiorSign <= 0) {
+        allInside = false;
+        break;
+      }
+    }
+    // If the tip is on the interior side of ALL pentagon edges, it's inside the pentagon.
+    if (allInside) return true;
+  }
+
+  return false;
 }

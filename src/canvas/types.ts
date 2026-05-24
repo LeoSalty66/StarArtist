@@ -19,4 +19,4 @@ export interface Line {
   cornerIndices?: number[];
 }
 
-export type Tool = 'pen' | 'eraser' | 'move' | 'bend';
+export type Tool = 'pen' | 'eraser' | 'move';
