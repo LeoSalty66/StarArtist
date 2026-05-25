@@ -20,27 +20,37 @@ function TestScreen({ onBack }: Props) {
   const [boilActive, setBoilActive] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
   const [babbling, setBabbling] = useState(false);
+  const [validated, setValidated] = useState(false);
   const drawing = useDrawingState();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Run the analyzer every time lines change.
+  // Run the analyzer every time lines change (for debug info display),
+  // but only "lock" when the user explicitly validates.
   const analysis = useMemo(() => analyze(drawing.lines), [drawing.lines]);
   const vResult = useMemo(() => vertexValidate(drawing.lines), [drawing.lines]);
 
   // Use vertex validation as primary.
   // Fall back to shared-edge triangle validation (old face-based analyzer)
   // ONLY if no vertex pair has multiple edges (which would cause false positives).
-  let sharedEdgeValid = false;
-  if (!vResult.isValidStar) {
+  let isValid = false;
+  if (vResult.isValidStar) {
+    isValid = true;
+  } else {
     let hasMultiEdge = false;
     for (const [, count] of vResult.edgeMultiplicity) {
       if (count > 1) { hasMultiEdge = true; break; }
     }
     if (!hasMultiEdge) {
-      sharedEdgeValid = analysis.isValidStar;
+      isValid = analysis.isValidStar;
     }
   }
-  const locked = vResult.isValidStar || sharedEdgeValid;
+  // Only lock if the user pressed Validate.
+  const locked = validated && isValid;
+
+  // Reset validated when lines change (so you can keep drawing after clearing).
+  useEffect(() => {
+    setValidated(false);
+  }, [drawing.lines]);
 
   // Activate line boil after the fill animation finishes
   useEffect(() => {
@@ -95,6 +105,14 @@ function TestScreen({ onBack }: Props) {
           ← Back
         </button>
         <h2>Test</h2>
+        <button
+          className={`tool-btn ${locked ? 'active' : ''}`}
+          onClick={() => setValidated(true)}
+          disabled={drawing.lines.length === 0}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Validate
+        </button>
         <button
           className="tool-btn danger"
           onClick={() => { clearStars(); setExportMessage('Stars cleared!'); setTimeout(() => setExportMessage(''), 2000); }}
@@ -187,6 +205,7 @@ function TestScreen({ onBack }: Props) {
             canRedo={drawing.canRedo}
             lineCount={drawing.lines.length}
             onExport={handleExport}
+            showLineTool
           />
         )}
       </div>

@@ -120,6 +120,7 @@ function playRandomClip(): void {
 let babbleInterval: number | null = null;
 let syllablesLeft = 0;
 let useWordPauses = false;
+let babbleActive = false; // tracks whether babble SHOULD be running
 
 /**
  * Start continuous babble.
@@ -127,10 +128,14 @@ let useWordPauses = false;
  *                     Default is false (continuous stream with no pauses).
  */
 export function startBabble(withPauses = false): void {
-  if (babbleInterval !== null) return;
+  if (babbleActive) return;
+  babbleActive = true;
   useWordPauses = withPauses;
   preloadVoice().then(() => {
-    scheduleNextSyllable();
+    // Only start if babble wasn't stopped while we were loading.
+    if (babbleActive) {
+      scheduleNextSyllable();
+    }
   });
 }
 
@@ -172,6 +177,7 @@ function playSyllableAndContinue(): void {
 
 /** Stop babbling. */
 export function stopBabble(): void {
+  babbleActive = false;
   if (babbleInterval !== null) {
     clearTimeout(babbleInterval);
     babbleInterval = null;
@@ -181,5 +187,5 @@ export function stopBabble(): void {
 
 /** Check if currently babbling. */
 export function isBabbling(): boolean {
-  return babbleInterval !== null;
+  return babbleActive;
 }

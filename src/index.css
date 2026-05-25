@@ -60,10 +60,79 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.menu-mural {
+  flex: 1;
+  display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  padding: 2rem;
+  position: relative;
+}
+
+.menu-logo {
+  position: relative;
+  width: 40%;
+  max-width: 400px;
+}
+
+.logo-frame {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  animation: logoShow1 1s steps(1) infinite;
+}
+
+.logo-frame-2 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: logoShow2 1s steps(1) infinite;
+}
+
+@keyframes logoShow1 {
+  0%, 50% { visibility: visible; }
+  50.01%, 100% { visibility: hidden; }
+}
+
+@keyframes logoShow2 {
+  0%, 50% { visibility: hidden; }
+  50.01%, 100% { visibility: visible; }
+}
+
+.menu-bottom-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem 1.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.menu-bottom-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  width: 100%;
+}
+
+.menu-bottom-buttons .menu-btn {
+  padding: 0.8rem 1rem;
+  font-size: 2rem;
+  min-width: 0;
+  flex: 1;
+  max-width: 220px;
+}
+
+.menu-bottom-bar > .menu-btn {
+  padding: 0.5rem 0.8rem;
+  font-size: 0.8rem;
+  opacity: 0.5;
 }
 
 .title {
@@ -80,14 +149,6 @@ body {
   font-size: 1.1rem;
   margin: 0 0 3rem 0;
   opacity: 0.7;
-}
-
-.menu-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  width: 100%;
-  max-width: 280px;
 }
 
 .menu-btn {
@@ -213,6 +274,12 @@ body {
   opacity: 0.6;
 }
 
+.header-hint.lines-remaining {
+  font-size: 2.5rem;
+  opacity: 1;
+  font-family: 'OmoriGame', sans-serif;
+}
+
 /* ---------- Toolbar ---------- */
 
 .toolbar {
@@ -319,6 +386,10 @@ body {
 }
 
 .drawing-canvas.tool-pen {
+  cursor: crosshair;
+}
+
+.drawing-canvas.tool-line {
   cursor: crosshair;
 }
 
@@ -538,6 +609,10 @@ body {
   font-size: 1rem;
 }
 
+.level-btn.tutorial-btn {
+  font-size: 0.85rem;
+}
+
 
 /* ---------- Success actions ---------- */
 
@@ -580,14 +655,33 @@ body {
 }
 
 /* Keep menu content above the sky */
-.menu-screen {
+.menu-screen .menu-mural,
+.menu-screen .menu-bottom-bar {
   position: relative;
   z-index: 1;
 }
 
-.menu-screen .title,
-.menu-screen .tagline,
-.menu-screen .menu-buttons {
-  position: relative;
-  z-index: 1;
+
+/* ---------- Loading screen ---------- */
+
+.loading-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0e1a;
+}
+
+.loading-text {
+  font-size: 1.5rem;
+  font-family: 'OmoriGame', sans-serif;
+  color: #7ec8e3;
+  animation: loadingPulse 1.2s ease infinite;
+}
+
+@keyframes loadingPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }

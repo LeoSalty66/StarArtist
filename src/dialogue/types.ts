@@ -13,6 +13,14 @@ export interface PortraitSet {
   talk: [string, string];
 }
 
+/**
+ * An image (or animated pair) to display on the canvas during this dialogue line.
+ */
+export interface CanvasImage {
+  /** Single static image URL, or two URLs that alternate every 0.5s. */
+  frames: [string] | [string, string];
+}
+
 export interface DialogueLine {
   /** Speaker name displayed above the text. */
   speaker: string;
@@ -20,8 +28,14 @@ export interface DialogueLine {
   text: string;
   /** Portrait set for this line. */
   portraits: PortraitSet;
-  /** Optional: override typing speed (seconds per character). Default 0.1. */
+  /** Optional: override typing speed (seconds per character). Default 0.054. */
   charDelay?: number;
+  /** Optional: image to show on the canvas during this line. */
+  canvasImage?: CanvasImage;
+  /** If true, signals PlayScreen to reveal the level's given lines on the canvas. */
+  showGivenLines?: boolean;
+  /** If true, signals PlayScreen to show the "lines remaining" counter. */
+  showLinesRemaining?: boolean;
 }
 
 export type DialogueSequence = DialogueLine[];

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startBabble, stopBabble, preloadVoice } from '../audio/voiceBabble';
-import type { DialogueSequence } from './types';
+import type { CanvasImage, DialogueSequence } from './types';
 
 export interface DialogueState {
   /** Index of the current line in the sequence. */
@@ -13,6 +13,12 @@ export interface DialogueState {
   isDone: boolean;
   /** Current portrait URL to display (cycles between frames). */
   currentPortrait: string;
+  /** Current canvas image config for this line (if any). */
+  currentCanvasImage: CanvasImage | null;
+  /** Whether this line triggers showing the level's given lines. */
+  showGivenLines: boolean;
+  /** Whether this line triggers showing the lines remaining counter. */
+  showLinesRemaining: boolean;
   /** Advance: if typing, reveal full line. If line complete, go to next. */
   advance: () => void;
 }
@@ -42,13 +48,16 @@ export function useDialogue(
     preloadVoice();
   }, []);
 
-  // Preload all portrait images used in this dialogue sequence.
+  // Preload all portrait images AND canvas images used in this dialogue sequence.
   useEffect(() => {
     if (!sequence) return;
     const urls = new Set<string>();
     for (const line of sequence) {
       line.portraits.idle.forEach((u) => urls.add(u));
       line.portraits.talk.forEach((u) => urls.add(u));
+      if (line.canvasImage) {
+        line.canvasImage.frames.forEach((u) => urls.add(u));
+      }
     }
     urls.forEach((url) => {
       const img = new Image();
@@ -157,12 +166,19 @@ export function useDialogue(
     }
   }, [sequence, isDone, isLineComplete, fullLength, lineIndex, onComplete]);
 
+  const currentCanvasImage = currentLine?.canvasImage ?? null;
+  const showGivenLines = currentLine?.showGivenLines ?? false;
+  const showLinesRemaining = currentLine?.showLinesRemaining ?? false;
+
   return {
     lineIndex,
     visibleChars,
     isLineComplete,
     isDone,
     currentPortrait,
+    currentCanvasImage,
+    showGivenLines,
+    showLinesRemaining,
     advance,
   };
 }

@@ -3,6 +3,8 @@ import DrawingCanvas from '../canvas/DrawingCanvas';
 import Toolbar from '../canvas/Toolbar';
 import CurvedSuccessOverlay from '../canvas/CurvedSuccessOverlay';
 import DialogueBox from '../dialogue/DialogueBox';
+import CanvasImageOverlay from '../dialogue/CanvasImageOverlay';
+import type { CanvasImage } from '../dialogue/types';
 import VictoryPopup from './VictoryPopup';
 import { useDrawingState } from '../canvas/useDrawingState';
 import { analyze } from '../analyzer/analyzer';
@@ -62,14 +64,50 @@ function denormalize(nl: NormalizedLine[], w: number, h: number): Line[] {
 }
 
 function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNextLevel }: Props) {
-  const [tool, setTool] = useState<Tool>('pen');
+  const drawTool = level.drawTool ?? 'pen';
+  const [tool, setTool] = useState<Tool>(drawTool);
   const [boilActive, setBoilActive] = useState(false);
-  const [showIntro, setShowIntro] = useState(!!level.introDialogue);
+  const [showIntro, setShowIntro] = useState(false); // delayed until assets load
   const [showCompletion, setShowCompletion] = useState(false);
   const [showVictory, setShowVictory] = useState(false);
   const [currentPortrait, setCurrentPortrait] = useState<string>('');
+  const [canvasImage, setCanvasImage] = useState<CanvasImage | null>(null);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const drawing = useDrawingState();
+
+  // Preload all images from dialogue before showing anything.
+  useEffect(() => {
+    const urls = new Set<string>();
+    const dialogues = [level.introDialogue, level.completionDialogue].filter(Boolean);
+    for (const seq of dialogues) {
+      for (const line of seq!) {
+        line.portraits.idle.forEach((u) => urls.add(u));
+        line.portraits.talk.forEach((u) => urls.add(u));
+        if (line.canvasImage) {
+          line.canvasImage.frames.forEach((u) => urls.add(u));
+        }
+      }
+    }
+    if (urls.size === 0) {
+      setAssetsLoaded(true);
+      if (level.introDialogue) setShowIntro(true);
+      return;
+    }
+    let loaded = 0;
+    const total = urls.size;
+    urls.forEach((url) => {
+      const img = new Image();
+      img.onload = img.onerror = () => {
+        loaded++;
+        if (loaded >= total) {
+          setAssetsLoaded(true);
+          if (level.introDialogue) setShowIntro(true);
+        }
+      };
+      img.src = url;
+    });
+  }, [level]);
 
   // Timer: track seconds since intro finishes (gameplay start).
   const startTimeRef = useRef<number>(Date.now());
@@ -87,10 +125,18 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
     return denormalize(level.givenLines, 600, 600);
   }, [level.givenLines]);
 
-  // All lines: given + player-drawn.
+  // Whether given lines are visible (hidden during tutorial intro until triggered).
+  const hasIntroWithReveal = level.introDialogue?.some((l) => l.showGivenLines) ?? false;
+  const [givenLinesVisible, setGivenLinesVisible] = useState(!hasIntroWithReveal);
+
+  // Whether lines remaining is visible (hidden until triggered or given lines show).
+  const hasLinesRemainingReveal = level.introDialogue?.some((l) => l.showLinesRemaining) ?? false;
+  const [linesRemainingVisible, setLinesRemainingVisible] = useState(!hasIntroWithReveal && !hasLinesRemainingReveal);
+
+  // All lines: given (if visible) + player-drawn.
   const allLines = useMemo(
-    () => [...givenLines, ...drawing.lines],
-    [givenLines, drawing.lines],
+    () => [...(givenLinesVisible ? givenLines : []), ...drawing.lines],
+    [givenLines, givenLinesVisible, drawing.lines],
   );
 
   // Analyze all lines together.
@@ -162,16 +208,23 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
 
   return (
     <div className="screen">
+      {!assetsLoaded && (
+        <div className="loading-screen">
+          <span className="loading-text">Loading...</span>
+        </div>
+      )}
       <header className="screen-header">
         <button className="back-btn" onClick={onBack}>
           ← Back
         </button>
         <h2>{level.name || level.id}</h2>
-        <span className="header-hint">
-          {locked
-            ? '⭐ Star complete!'
-            : `Lines remaining: ${linesRemaining}`}
-        </span>
+        {linesRemainingVisible && (
+          <span className="header-hint lines-remaining">
+            {locked
+              ? '⭐ Star complete!'
+              : `Lines remaining: ${linesRemaining}`}
+          </span>
+        )}
       </header>
       <div className="canvas-area">
         <div className="canvas-wrapper" ref={wrapperRef}>
@@ -205,12 +258,19 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
                 ) : undefined
               }
             />
+          {/* Canvas image from dialogue */}
+          {canvasImage && (
+            <CanvasImageOverlay image={canvasImage} />
+          )}
           {/* Intro dialogue */}
           {showIntro && (
             <DialogueBox
               sequence={level.introDialogue ?? null}
-              onComplete={() => setShowIntro(false)}
+              onComplete={() => { setShowIntro(false); setCanvasImage(null); }}
               onPortraitChange={setCurrentPortrait}
+              onCanvasImageChange={setCanvasImage}
+              onShowGivenLines={() => { setGivenLinesVisible(true); setLinesRemainingVisible(true); }}
+              onShowLinesRemaining={() => setLinesRemainingVisible(true)}
             />
           )}
           {/* Completion dialogue */}
@@ -219,6 +279,7 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
               sequence={level.completionDialogue ?? null}
               onComplete={handleCompletionDone}
               onPortraitChange={setCurrentPortrait}
+              onCanvasImageChange={setCanvasImage}
             />
           )}
           {/* Victory popup */}

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useDialogue } from './useDialogue';
-import type { DialogueSequence } from './types';
+import type { CanvasImage, DialogueSequence } from './types';
 import './DialogueBox.css';
 
 interface Props {
@@ -10,6 +10,12 @@ interface Props {
   onComplete?: () => void;
   /** Called when the current portrait URL changes (for external display). */
   onPortraitChange?: (url: string) => void;
+  /** Called when the canvas image changes (for display on the canvas). */
+  onCanvasImageChange?: (image: CanvasImage | null) => void;
+  /** Called when a dialogue line triggers showing given lines. */
+  onShowGivenLines?: () => void;
+  /** Called when a dialogue line triggers showing lines remaining. */
+  onShowLinesRemaining?: () => void;
 }
 
 /**
@@ -17,8 +23,8 @@ interface Props {
  * The portrait is displayed externally (e.g., in the toolbar).
  * Click/tap anywhere to advance (finish typing or go to next line).
  */
-function DialogueBox({ sequence, onComplete, onPortraitChange }: Props) {
-  const { lineIndex, visibleChars, isLineComplete, isDone, currentPortrait, advance } =
+function DialogueBox({ sequence, onComplete, onPortraitChange, onCanvasImageChange, onShowGivenLines, onShowLinesRemaining }: Props) {
+  const { lineIndex, visibleChars, isLineComplete, isDone, currentPortrait, currentCanvasImage, showGivenLines, showLinesRemaining, advance } =
     useDialogue(sequence, onComplete);
 
   // Always push portrait to parent whenever it changes.
@@ -27,6 +33,32 @@ function DialogueBox({ sequence, onComplete, onPortraitChange }: Props) {
       onPortraitChange?.(currentPortrait);
     }
   }); // Run every render to ensure parent stays in sync
+
+  // Push canvas image changes to parent.
+  useEffect(() => {
+    onCanvasImageChange?.(currentCanvasImage);
+  }, [currentCanvasImage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trigger showing given lines when flagged.
+  useEffect(() => {
+    if (showGivenLines) {
+      onShowGivenLines?.();
+    }
+  }, [showGivenLines, lineIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trigger showing lines remaining when flagged.
+  useEffect(() => {
+    if (showLinesRemaining) {
+      onShowLinesRemaining?.();
+    }
+  }, [showLinesRemaining, lineIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear canvas image when dialogue finishes.
+  useEffect(() => {
+    if (isDone) {
+      onCanvasImageChange?.(null);
+    }
+  }, [isDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sequence || isDone) return null;
 

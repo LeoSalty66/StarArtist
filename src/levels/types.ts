@@ -15,6 +15,8 @@ export interface LevelData {
   givenLines: NormalizedLine[];
   /** Maximum number of lines the player can add. */
   lineBudget: number;
+  /** Tool to use for drawing in this level. Defaults to 'pen'. */
+  drawTool?: 'pen' | 'line';
   /**
    * Aspect ratio (width/height) of the canvas the level was authored on.
    * Used to correct coordinate distortion. Defaults to 1 (square).

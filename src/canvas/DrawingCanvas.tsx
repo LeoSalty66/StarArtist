@@ -26,6 +26,15 @@ interface MoveState {
   current: Point;
 }
 
+interface LineToolState {
+  start: Point;
+  current: Point;
+  startSnap: SnapTarget | null;
+  endSnap: SnapTarget | null;
+  /** Points along the draft line that are near existing endpoints/intersections. */
+  bodySnaps: Point[];
+}
+
 function DrawingCanvas({
   tool,
   lines,
@@ -41,6 +50,7 @@ function DrawingCanvas({
   const [cursor, setCursor] = useState<Point | null>(null);
   const [snap, setSnap] = useState<SnapTarget | null>(null);
   const [moveState, setMoveState] = useState<MoveState | null>(null);
+  const [lineToolState, setLineToolState] = useState<LineToolState | null>(null);
   // Freehand pen state
   const [isDrawing, setIsDrawing] = useState(false);
   const rawPointsRef = useRef<Point[]>([]);
@@ -50,6 +60,7 @@ function DrawingCanvas({
     setIsDrawing(false);
     setPreviewPoints([]);
     setMoveState(null);
+    setLineToolState(null);
   }, [tool]);
 
   useEffect(() => {
@@ -58,6 +69,7 @@ function DrawingCanvas({
         setIsDrawing(false);
         setPreviewPoints([]);
         setMoveState(null);
+        setLineToolState(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -90,6 +102,10 @@ function DrawingCanvas({
       rawPointsRef.current = [point];
       setPreviewPoints([point]);
       setIsDrawing(true);
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } else if (tool === 'line') {
+      const { point, snap: startSnap } = resolvePoint(raw);
+      setLineToolState({ start: point, current: point, startSnap, endSnap: null, bodySnaps: [] });
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } else if (tool === 'move') {
       let bestDist = Infinity;
@@ -148,6 +164,43 @@ function DrawingCanvas({
       return;
     }
 
+    if (tool === 'line' && lineToolState) {
+      const { point: endPoint, snap: endSnap } = resolvePoint(raw);
+      // Find existing endpoints/intersections that fall near the draft line body.
+      const BODY_SNAP_DIST = 9;
+      const bodySnaps: Point[] = [];
+      // Collect all candidate points: endpoints of existing lines + intersections.
+      const candidates: Point[] = [];
+      for (const l of lines) {
+        candidates.push(l.a, l.b);
+      }
+      for (let i = 0; i < lines.length; i++) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ixs = findLineIntersections(lines[i], lines[j]);
+          candidates.push(...ixs);
+        }
+      }
+      // Check each candidate's distance to the draft line segment.
+      const draftA = lineToolState.start;
+      const draftB = endPoint;
+      for (const c of candidates) {
+        // Skip if it's near the start or end (those already have their own snaps).
+        if (dist(c, draftA) < BODY_SNAP_DIST || dist(c, draftB) < BODY_SNAP_DIST) continue;
+        // Distance from candidate to the draft line segment.
+        const { distance } = closestPointOnDraftSegment(c, draftA, draftB);
+        if (distance <= BODY_SNAP_DIST) {
+          // Deduplicate
+          if (!bodySnaps.some((s) => dist(s, c) < 4)) {
+            bodySnaps.push(c);
+          }
+        }
+      }
+      setLineToolState({ ...lineToolState, current: endPoint, endSnap, bodySnaps });
+      setCursor(endPoint);
+      setSnap(endSnap);
+      return;
+    }
+
     if (tool === 'move' && moveState) {
       setMoveState({ ...moveState, current: raw });
       return;
@@ -202,6 +255,24 @@ function DrawingCanvas({
       setIsDrawing(false);
       setPreviewPoints([]);
       rawPointsRef.current = [];
+      return;
+    }
+
+    if (tool === 'line' && lineToolState) {
+      const raw = getSvgPoint(e.clientX, e.clientY);
+      const { point: endPoint } = raw ? resolvePoint(raw) : { point: lineToolState.current };
+      const startPoint = lineToolState.start;
+      const length = dist(startPoint, endPoint);
+
+      if (length >= MIN_STROKE_LENGTH) {
+        onAddLine({
+          id: crypto.randomUUID(),
+          a: startPoint,
+          b: endPoint,
+        });
+      }
+
+      setLineToolState(null);
       return;
     }
 
@@ -333,6 +404,57 @@ function DrawingCanvas({
         />
       )}
 
+      {/* Line tool preview */}
+      {lineToolState && (
+        <g pointerEvents="none">
+          <line
+            x1={lineToolState.start.x}
+            y1={lineToolState.start.y}
+            x2={lineToolState.current.x}
+            y2={lineToolState.current.y}
+            stroke="#7ec8e3"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            opacity={0.7}
+          />
+          {/* Start snap indicator */}
+          {lineToolState.startSnap && (
+            <circle
+              cx={lineToolState.start.x}
+              cy={lineToolState.start.y}
+              r={7}
+              fill="none"
+              stroke="#6b8fa8"
+              strokeWidth={2}
+            />
+          )}
+          {/* End snap indicator */}
+          {lineToolState.endSnap && (
+            <circle
+              cx={lineToolState.current.x}
+              cy={lineToolState.current.y}
+              r={7}
+              fill="none"
+              stroke="#6b8fa8"
+              strokeWidth={2}
+            />
+          )}
+          {/* Body snap indicators — existing points that the draft line passes through */}
+          {lineToolState.bodySnaps.map((p, i) => (
+            <circle
+              key={`body-snap-${i}`}
+              cx={p.x}
+              cy={p.y}
+              r={6}
+              fill="none"
+              stroke="#b088f9"
+              strokeWidth={2}
+              opacity={0.8}
+            />
+          ))}
+        </g>
+      )}
+
       {/* Move tool: highlight */}
       {tool === 'move' && moveState && (
         <circle
@@ -346,7 +468,7 @@ function DrawingCanvas({
       )}
 
       {/* Snap indicator */}
-      {snap && tool === 'pen' && (
+      {snap && (tool === 'pen' || tool === 'line') && !lineToolState && (
         <g pointerEvents="none">
           <circle
             cx={snap.point.x}
@@ -383,6 +505,18 @@ function computePathLength(points: Point[]): number {
     len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
   }
   return len;
+}
+
+/** Distance from point P to segment AB. */
+function closestPointOnDraftSegment(p: Point, a: Point, b: Point): { distance: number } {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { distance: Math.hypot(p.x - a.x, p.y - a.y) };
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const proj = { x: a.x + t * dx, y: a.y + t * dy };
+  return { distance: Math.hypot(p.x - proj.x, p.y - proj.y) };
 }
 
 export default DrawingCanvas;

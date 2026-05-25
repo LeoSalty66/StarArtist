@@ -38,17 +38,17 @@ function NightSky() {
               {/* Each line gets its own set of 3 filters for independent wobble */}
               {star.lines.map((_, j) => (
                 <g key={j}>
-                  <filter id={`sb-${i}-${j}-1`} x="-15%" y="-15%" width="130%" height="130%">
-                    <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 1} result="n" />
-                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.06" xChannelSelector="R" yChannelSelector="G" />
+                  <filter id={`sb-${i}-${j}-1`} x="-25%" y="-25%" width="150%" height="150%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" seed={i * 100 + j * 3 + 1} result="n" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.18" xChannelSelector="R" yChannelSelector="G" />
                   </filter>
-                  <filter id={`sb-${i}-${j}-2`} x="-15%" y="-15%" width="130%" height="130%">
-                    <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 2} result="n" />
-                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.06" xChannelSelector="R" yChannelSelector="G" />
+                  <filter id={`sb-${i}-${j}-2`} x="-25%" y="-25%" width="150%" height="150%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" seed={i * 100 + j * 3 + 2} result="n" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.18" xChannelSelector="R" yChannelSelector="G" />
                   </filter>
-                  <filter id={`sb-${i}-${j}-3`} x="-15%" y="-15%" width="130%" height="130%">
-                    <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="2" seed={i * 100 + j * 3 + 3} result="n" />
-                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.06" xChannelSelector="R" yChannelSelector="G" />
+                  <filter id={`sb-${i}-${j}-3`} x="-25%" y="-25%" width="150%" height="150%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" seed={i * 100 + j * 3 + 3} result="n" />
+                    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.18" xChannelSelector="R" yChannelSelector="G" />
                   </filter>
                 </g>
               ))}

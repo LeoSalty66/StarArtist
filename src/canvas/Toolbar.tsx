@@ -12,6 +12,8 @@ interface Props {
   onExport?: () => void;
   /** Optional portrait image URL to display at the bottom of the toolbar. */
   portrait?: string;
+  /** Whether to show the separate Line tool button. Default false (test mode sets true). */
+  showLineTool?: boolean;
 }
 
 function Toolbar({
@@ -25,17 +27,27 @@ function Toolbar({
   lineCount,
   onExport,
   portrait,
+  showLineTool = false,
 }: Props) {
   return (
     <div className="toolbar">
       <div className="toolbar-group">
         <button
-          className={`tool-btn ${tool === 'pen' ? 'active' : ''}`}
-          onClick={() => onToolChange('pen')}
+          className={`tool-btn ${tool === 'pen' || (!showLineTool && tool === 'line') ? 'active' : ''}`}
+          onClick={() => onToolChange(showLineTool ? 'pen' : (tool === 'pen' || tool === 'line' ? tool : 'pen'))}
           title="Pen (press & drag to draw a line)"
         >
           Pen
         </button>
+        {showLineTool && (
+          <button
+            className={`tool-btn ${tool === 'line' ? 'active' : ''}`}
+            onClick={() => onToolChange('line')}
+            title="Line (press & drag to draw a straight line)"
+          >
+            Line
+          </button>
+        )}
         <button
           className={`tool-btn ${tool === 'move' ? 'active' : ''}`}
           onClick={() => onToolChange('move')}
