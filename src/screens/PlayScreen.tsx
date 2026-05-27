@@ -7,8 +7,9 @@ import CanvasImageOverlay from '../dialogue/CanvasImageOverlay';
 import type { CanvasImage } from '../dialogue/types';
 import VictoryPopup from './VictoryPopup';
 import { useDrawingState } from '../canvas/useDrawingState';
-import { analyze } from '../analyzer/analyzer';
-import { vertexValidate } from '../analyzer/vertexValidation';
+import { useKeyboardShortcuts } from '../canvas/useKeyboardShortcuts';
+import { analyze, type AnalysisResult } from '../analyzer/analyzer';
+import { vertexValidate, type VertexValidationResult } from '../analyzer/vertexValidation';
 import { saveStar } from '../storage/starLibrary';
 import type { Line, Tool } from '../canvas/types';
 import type { LevelData, NormalizedLine } from '../levels/types';
@@ -23,7 +24,7 @@ interface Props {
 }
 
 /** Convert normalized lines to pixel lines, centered and scaled to fit the canvas uniformly. */
-function denormalize(nl: NormalizedLine[], w: number, h: number): Line[] {
+function denormalize(nl: NormalizedLine[], w: number, h: number, displayScale = 1): Line[] {
   if (nl.length === 0) return [];
 
   const xs: number[] = [];
@@ -44,7 +45,7 @@ function denormalize(nl: NormalizedLine[], w: number, h: number): Line[] {
   const padding = 0.1;
   const availW = w * (1 - 2 * padding);
   const availH = h * (1 - 2 * padding);
-  const scale = Math.min(availW / bboxW, availH / bboxH);
+  const scale = Math.min(availW / bboxW, availH / bboxH) * displayScale;
 
   const scaledW = bboxW * scale;
   const scaledH = bboxH * scale;
@@ -75,6 +76,7 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const drawing = useDrawingState();
+  const [debugMessage, setDebugMessage] = useState('');
 
   // Preload all images from dialogue before showing anything.
   useEffect(() => {
@@ -122,7 +124,7 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
 
   // Given lines in pixel space (using fixed 600x600 viewBox coordinates).
   const givenLines = useMemo(() => {
-    return denormalize(level.givenLines, 600, 600);
+    return denormalize(level.givenLines, 600, 600, level.displayScale);
   }, [level.givenLines]);
 
   // Whether given lines are visible (hidden during tutorial intro until triggered).
@@ -156,6 +158,8 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
   }
   const locked = vResult.isValidStar || sharedEdgeValid;
 
+  useKeyboardShortcuts(setTool, drawing.undo, drawing.redo, locked, drawTool);
+
   const linesRemaining = level.lineBudget - drawing.lines.length;
   const atBudget = linesRemaining <= 0;
 
@@ -178,6 +182,13 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
   // Success boil effect + completion dialogue.
   useEffect(() => {
     if (locked) {
+      // Trigger screen shake
+      const wrapper = wrapperRef.current;
+      if (wrapper) {
+        wrapper.classList.add('shake');
+        const removeShake = () => wrapper.classList.remove('shake');
+        wrapper.addEventListener('animationend', removeShake, { once: true });
+      }
       const timer = setTimeout(() => setBoilActive(true), 2400);
       saveStar(level.id, allLines);
       if (level.completionDialogue) {
@@ -224,6 +235,24 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
               ? '⭐ Star complete!'
               : `Lines remaining: ${linesRemaining}`}
           </span>
+        )}
+        {level.id === '1-9' && (
+          <>
+            <button
+              className="tool-btn"
+              onClick={() => {
+                const dump = buildPlayDebugDump(vResult, analysis);
+                navigator.clipboard.writeText(dump).then(() => {
+                  setDebugMessage('Debug copied!');
+                  setTimeout(() => setDebugMessage(''), 2000);
+                });
+              }}
+              style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}
+            >
+              Copy Debug
+            </button>
+            {debugMessage && <span className="header-hint" style={{ marginLeft: '0.5rem' }}>{debugMessage}</span>}
+          </>
         )}
       </header>
       <div className="canvas-area">
@@ -302,10 +331,71 @@ function PlayScreen({ level, onBack, onComplete, onMainMenu, onLevelSelect, onNe
           canRedo={drawing.canRedo}
           lineCount={drawing.lines.length}
           portrait={(showIntro || showCompletion) ? currentPortrait : undefined}
+          defaultDrawTool={drawTool}
         />
       </div>
     </div>
   );
+}
+
+function buildPlayDebugDump(vResult: VertexValidationResult, analysis: AnalysisResult): string {
+  const lines: string[] = [];
+  lines.push('=== VERTEX VALIDATION DEBUG DUMP ===');
+  lines.push(`Result: ${vResult.isValidStar ? 'VALID' : 'INVALID'}`);
+  lines.push(`Message: ${vResult.message}`);
+  lines.push(`Vertices: ${vResult.vertices.length}`);
+  lines.push(`Edge count: ${vResult.edgeCount}`);
+  lines.push('');
+
+  lines.push('--- VERTICES ---');
+  for (let i = 0; i < vResult.vertices.length; i++) {
+    const v = vResult.vertices[i];
+    const degree = vResult.adjacency.get(i)?.size ?? 0;
+    const neighbors = [...(vResult.adjacency.get(i) ?? [])].join(', ');
+    lines.push(`  V${i}: (${v.x.toFixed(1)}, ${v.y.toFixed(1)}) | degree=${degree} | connects to: [${neighbors}]`);
+  }
+  lines.push('');
+
+  lines.push('--- EDGES (with multiplicity) ---');
+  for (const [key, count] of vResult.edgeMultiplicity) {
+    lines.push(`  ${key}: ×${count}`);
+  }
+  lines.push('');
+
+  if (vResult.pentagonVertices.length > 0) {
+    lines.push('--- PENTAGON CYCLE ---');
+    lines.push(`  Vertices: ${vResult.pentagonVertices.join(' → ')} → ${vResult.pentagonVertices[0]}`);
+    lines.push(`  Pentagon edges:`);
+    for (let i = 0; i < 5; i++) {
+      const a = vResult.pentagonVertices[i];
+      const b = vResult.pentagonVertices[(i + 1) % 5];
+      const key = Math.min(a, b) + '-' + Math.max(a, b);
+      const mult = vResult.edgeMultiplicity.get(key) ?? 0;
+      lines.push(`    ${a}-${b} (multiplicity: ${mult})`);
+    }
+  }
+  lines.push('');
+
+  if (vResult.tipVertices.length > 0) {
+    lines.push('--- TIP VERTICES ---');
+    for (const t of vResult.tipVertices) {
+      const neighbors = [...(vResult.adjacency.get(t) ?? [])].join(', ');
+      lines.push(`  V${t}: connects to [${neighbors}]`);
+    }
+  }
+  lines.push('');
+
+  lines.push('=== OLD FACE-BASED ANALYZER ===');
+  lines.push(`Result: ${analysis.isValidStar ? 'VALID' : 'INVALID'}`);
+  lines.push(`Message: ${analysis.message}`);
+  lines.push(`Bounded faces: ${analysis.boundedFaces.length}`);
+  for (const f of analysis.boundedFaces) {
+    lines.push(`  Face ${f.id}: ${f.halfEdgeIds.length} sides`);
+  }
+  lines.push(`Dangling edges: ${analysis.danglingEdgeIds.length}`);
+  lines.push('');
+
+  return lines.join('\n');
 }
 
 export default PlayScreen;

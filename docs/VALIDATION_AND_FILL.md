@@ -13,9 +13,10 @@ A valid 5-pointed star is a graph where:
 1. There exist exactly **5 vertices forming a cycle** (the pentagon)
 2. Each edge of the pentagon cycle has exactly **1 "tip" vertex** that connects to both of that edge's endpoints (forming a triangle)
 3. Tips may be **shared/merged** (one vertex serving multiple triangle roles)
-4. The graph contains **no extra edges** beyond pentagon edges and triangle edges
-5. Valid vertex count: **6 to 10** (10 = all unique tips, 6 = all tips merged into one)
-6. Valid edge count: **≤15** (can be less with merged tips sharing edges)
+4. **Tips must NOT be pentagon vertices** — only non-pentagon vertices can serve as tips
+5. The graph contains **no extra edges** beyond pentagon edges and triangle edges
+6. Valid vertex count: **6 to 10** (10 = all unique tips, 6 = all tips merged into one)
+7. Valid edge count: **≤15** (can be less with merged tips sharing edges)
 
 ---
 
@@ -63,7 +64,12 @@ Result: `ProcessedStroke { points, cornerIndices }`
 2. **Add endpoints** as vertices (line 55): every sub-line's `a` and `b`
 3. **Add intersections** (line 60): pairwise segment checks between all lines
 4. **Add self-intersections** (line 67): check each line against itself
-5. **Vertex merge distance:** 6px (positions within 6px become one vertex)
+5. **Vertex merge distance:** 9px (positions within 9px become one vertex)
+
+### Step 2b: Collinear Intersection Suppression
+**File:** `src/canvas/geometry.ts`, `segmentIntersection`
+
+Segments crossing at very shallow angles (< ~8.6°, i.e. sin(angle) < 0.15) are treated as parallel. This prevents phantom intersection points from near-overlapping lines that are trying to be "the same line" but are slightly off-angle.
 
 ### Step 3: Adjacency Building
 **File:** `src/analyzer/vertexValidation.ts`, line 74
@@ -76,23 +82,41 @@ For each exploded line:
 5. Connect consecutive ordered vertices as edges
 6. Track edge multiplicity (multiple paths between same pair)
 
-### Step 4: Pentagon Cycle Search
-**File:** `src/analyzer/vertexValidation.ts`, line 315 (`findAllPentagonCycles`)
+### Step 3b: Degree-2 Collinear Vertex Contraction
 
-- Brute-force all C(n,5) combinations of vertices
-- For each group of 5, try all 24 permutations (`findCycleInGroup`, line 347)
+After adjacency is built, the graph is simplified by contracting degree-2 vertices that sit collinearly between their two neighbors. This handles the common case where overlapping lines create chains like A→B→C where B is just a given-line endpoint in the middle of what is effectively a single edge.
+
+**Contraction criteria (all must pass):**
+1. Vertex has exactly degree 2
+2. Perpendicular distance to the line through its two neighbors is within tolerance
+3. **Tolerance is proportional to edge length:** `min(12px, edgeLen × 0.2)` — this prevents short edges from incorrectly swallowing nearby real vertices
+4. Vertex projects between its two neighbors (parametric t ∈ [-0.1, 1.1]) — prevents vertices past the segment ends from being contracted
+
+**Effect:** The two edges through the contracted vertex are merged into one direct edge. Edge multiplicity is preserved as `max(mult_AV, mult_BV)`.
+
+### Step 3c: Active Vertex Counting
+
+After contraction, vertex count checks use only **active vertices** (those with degree > 0). Contracted vertices remain in the array but are excluded from counts and cycle searches.
+
+### Step 4: Pentagon Cycle Search
+**File:** `src/analyzer/vertexValidation.ts`, `findAllPentagonCycles`
+
+- Only considers **active** (non-contracted) vertices
+- Brute-force all C(n,5) combinations of active vertices
+- For each group of 5, try all 24 permutations (`findCycleInGroup`)
 - A valid cycle: each consecutive pair (wrapping) must be adjacent in the graph
 
 ### Step 5: Tip Assignment (Backtracking)
-**File:** `src/analyzer/vertexValidation.ts`, line 194 (`validateWithCycle`)
+**File:** `src/analyzer/vertexValidation.ts`, `validateWithCycle`
 
 For each candidate pentagon cycle:
 1. For each pentagon edge, find all candidate tips (vertices connecting to both endpoints)
-2. Backtrack through all assignments (line 241, `backtrackAssign`)
-3. For each complete assignment, run `checkAssignment` (line 270)
+2. **Pentagon vertices are excluded from tip candidates** (`pentSet.has(v)` check) — this prevents 4-pointed shapes from falsely validating by reusing pentagon vertices as tips
+3. Backtrack through all assignments (`backtrackAssign`)
+4. For each complete assignment, run `checkAssignment`
 
 ### Step 6: Edge Verification
-**File:** `src/analyzer/vertexValidation.ts`, line 270 (`checkAssignment`)
+**File:** `src/analyzer/vertexValidation.ts`, `checkAssignment`
 
 Build the set of required edges (pentagon edges + triangle edges from assignment).
 - Every actual edge must be in the required set
@@ -100,7 +124,7 @@ Build the set of required edges (pentagon edges + triangle edges from assignment
 - If both pass → **valid star!**
 
 ### Fallback: Shared-Edge Triangle Validation
-**File:** `src/screens/TestScreen.tsx`, line ~40
+**File:** `src/screens/TestScreen.tsx` and `src/screens/PlayScreen.tsx`
 
 If vertex validation fails AND no multi-edges exist, the old face-based analyzer (`src/analyzer/analyzer.ts`) runs as a fallback. This handles stars where triangles share edges (which changes the graph topology beyond what vertex validation covers).
 
@@ -154,7 +178,11 @@ If vertex validation fails AND no multi-edges exist, the old face-based analyzer
 
 | Constant | Value | Location | Purpose |
 |----------|-------|----------|---------|
-| VERTEX_MERGE_DISTANCE | 6px | vertexValidation.ts:4 | How close two points must be to count as one vertex |
+| VERTEX_MERGE_DISTANCE | 9px | vertexValidation.ts:4 | How close two points must be to count as one vertex |
+| COLLINEAR_SIN_THRESHOLD | 0.15 | geometry.ts (segmentIntersection) | Sin of angle below which segments are treated as parallel (~8.6°) |
+| CONTRACTION_MAX_TOLERANCE | 12px | vertexValidation.ts (Step 3b) | Maximum perpendicular distance for contraction |
+| CONTRACTION_RATIO | 0.2 | vertexValidation.ts (Step 3b) | Tolerance scales as edgeLen × 0.2 (capped at 12px) |
+| CONTRACTION_T_RANGE | [-0.1, 1.1] | vertexValidation.ts (Step 3b) | Parametric projection bounds for contraction eligibility |
 | CORNER_ANGLE_THRESHOLD | 20° | strokeProcessor.ts:4 | Angle change to detect a corner |
 | CORNER_COOLDOWN_DISTANCE | 30px | strokeProcessor.ts:5 | Min distance before another corner can fire |
 | CANVAS_SIZE | 600 | floodFill.ts:4 | Hidden canvas dimensions (matches SVG viewBox) |
@@ -166,7 +194,40 @@ If vertex validation fails AND no multi-edges exist, the old face-based analyzer
 
 ## How to Debug
 
-1. **Copy Debug button:** Dumps full graph state (vertices, edges, adjacency, pentagon cycle, tip assignment)
+1. **Copy Debug button:** Dumps full graph state (vertices, edges, adjacency, pentagon cycle, tip assignment). Available in TestScreen always, and can be temporarily added to PlayScreen levels by editing the level ID check.
 2. **Fill Debug button:** Shows seed positions and fill success/failure for each shape
 3. **Red dots:** Endpoints and detected corners (visible on canvas)
 4. **Yellow dots:** Intersection points between lines
+
+---
+
+## Change Log
+
+### Session: 2026-05-26
+
+**Problem:** Overlapping lines (extending existing lines in both directions) weren't validating on later levels due to phantom vertices and tight tolerances.
+
+**Changes made:**
+
+1. **VERTEX_MERGE_DISTANCE increased from 6px to 9px** (`vertexValidation.ts`)
+   - More forgiving detection of when a drawn line passes through existing vertices
+   - Helps overlapping-line technique feel natural
+
+2. **Collinear intersection suppression** (`geometry.ts`, `segmentIntersection`)
+   - Segments crossing at < 8.6° are treated as parallel (returns null)
+   - Prevents phantom intersection points from near-overlapping lines
+
+3. **Degree-2 collinear vertex contraction** (`vertexValidation.ts`, Step 3b)
+   - After adjacency is built, contracts degree-2 vertices sitting on the line between their neighbors
+   - Tolerance proportional to edge length: `min(12px, edgeLen × 0.2)`
+   - Projection check ensures vertex is between neighbors (t ∈ [-0.1, 1.1])
+   - Solves the "too many vertices" problem when given-line endpoints become intermediate points on overlapping paths
+
+4. **Pentagon vertex exclusion from tip candidates** (`vertexValidation.ts`, `validateWithCycle`)
+   - `pentSet.has(v)` check prevents any pentagon vertex from being reused as a tip
+   - Fixes false validation of 4-pointed shapes that exploited pentagon vertices doubling as tips
+
+5. **Active vertex counting and cycle search** (`vertexValidation.ts`)
+   - Vertex count bounds (6-10) now count only active vertices (degree > 0)
+   - Pentagon cycle search only considers active vertices
+   - Prevents contracted ghost vertices from inflating counts or being searched

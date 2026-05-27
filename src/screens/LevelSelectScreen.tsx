@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { preloadVoice } from '../audio/voiceBabble';
+import { loadStars } from '../storage/starLibrary';
+import chapter1 from '../levels/chapter1';
 
 interface Props {
   chapter: number;
@@ -7,14 +9,24 @@ interface Props {
   onSelectLevel: (level: number) => void;
 }
 
-const LEVELS_PER_CHAPTER = 12;
-const UNLOCKED_LEVELS = 3; // First 3 levels are unlocked for now
-
 function LevelSelectScreen({ chapter, onBack, onSelectLevel }: Props) {
   // Preload voice clips so they're ready when dialogue starts.
   useEffect(() => {
     preloadVoice();
   }, []);
+
+  // Determine which levels exist and which are completed.
+  const levels = chapter === 1 ? chapter1 : [];
+  const completedIds = useMemo(() => {
+    const stars = loadStars();
+    return new Set(stars.map((s) => s.levelId));
+  }, []);
+
+  // Find the first uncompleted level index (0-based).
+  const firstUncompletedIdx = levels.findIndex((l) => !completedIds.has(l.id));
+  // If all completed, everything is unlocked.
+  const unlockedUpTo = firstUncompletedIdx === -1 ? levels.length - 1 : firstUncompletedIdx;
+
   return (
     <div className="screen">
       <header className="screen-header">
@@ -25,18 +37,20 @@ function LevelSelectScreen({ chapter, onBack, onSelectLevel }: Props) {
       </header>
       <div className="screen-body">
         <div className="level-grid">
-          {Array.from({ length: LEVELS_PER_CHAPTER }, (_, i) => {
+          {Array.from({ length: 16 }, (_, i) => {
             const levelNum = i + 1;
-            const locked = levelNum > UNLOCKED_LEVELS;
+            const level = levels[i];
+            const isCompleted = level ? completedIds.has(level.id) : false;
+            const isUnlocked = level ? i <= unlockedUpTo : false;
             const label = i === 0 ? 'Tutorial' : `${i}`;
             return (
               <button
-                key={levelNum}
-                className={`level-btn ${locked ? 'locked' : ''}${i === 0 ? ' tutorial-btn' : ''}`}
-                onClick={() => !locked && onSelectLevel(levelNum)}
-                disabled={locked}
+                key={i}
+                className={`level-btn${!isUnlocked ? ' locked' : ''}${isCompleted ? ' completed' : ''}${i === 0 ? ' tutorial-btn' : ''}`}
+                onClick={() => isUnlocked && onSelectLevel(levelNum)}
+                disabled={!isUnlocked}
               >
-                {locked ? '–' : label}
+                {label}
               </button>
             );
           })}

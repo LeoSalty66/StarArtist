@@ -31,7 +31,12 @@ function CurvedSuccessOverlay({ pentCycle, tipAssignment, vertices, lines }: Pro
 
   // Generate fill overlays once on mount.
   const overlays = useMemo(() => {
-    return generateFillOverlays(pentCycle, tipAssignment, vertices, lines);
+    try {
+      return generateFillOverlays(pentCycle, tipAssignment, vertices, lines);
+    } catch (e) {
+      console.error('Fill overlay generation failed:', e);
+      return null;
+    }
   }, [pentCycle, tipAssignment, vertices, lines]);
 
   if (!overlays) return null;
@@ -60,8 +65,8 @@ function CurvedSuccessOverlay({ pentCycle, tipAssignment, vertices, lines }: Pro
           href={overlays.pentagonDataUrl}
           x="0"
           y="0"
-          width="600"
-          height="600"
+          width={overlays.canvasSize}
+          height={overlays.canvasSize}
           className="fill-pentagon"
         />
       )}
@@ -74,8 +79,8 @@ function CurvedSuccessOverlay({ pentCycle, tipAssignment, vertices, lines }: Pro
             href={dataUrl}
             x="0"
             y="0"
-            width="600"
-            height="600"
+            width={overlays.canvasSize}
+            height={overlays.canvasSize}
             className="fill-triangle"
           />
         ) : null,

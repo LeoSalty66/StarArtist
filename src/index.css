@@ -48,10 +48,14 @@ body {
 
 .app::before {
   left: 0;
+  background: #131b2e url('/art/backgrounds/SideBorders/SideBorderLeft.png') no-repeat;
+  background-size: 100% 100%;
 }
 
 .app::after {
   right: 0;
+  background: #131b2e url('/art/backgrounds/SideBorders/SideBorderRight.png') no-repeat;
+  background-size: 100% 100%;
 }
 
 /* ---------- Menu screen ---------- */
@@ -63,6 +67,8 @@ body {
   position: relative;
   z-index: 1;
   overflow: hidden;
+  background: url('/art/backgrounds/MainMenu.png') no-repeat center center;
+  background-size: cover;
 }
 
 .menu-mural {
@@ -197,6 +203,9 @@ body {
   gap: 1rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid rgba(126, 200, 227, 0.15);
+  min-height: 0;
+  height: 3.5rem;
+  overflow: hidden;
 }
 
 .screen-header h2 {
@@ -275,7 +284,7 @@ body {
 }
 
 .header-hint.lines-remaining {
-  font-size: 2.5rem;
+  font-size: 1.4rem;
   opacity: 1;
   font-family: 'OmoriGame', sans-serif;
 }
@@ -376,6 +385,20 @@ body {
   overflow: hidden;
 }
 
+.canvas-wrapper.shake {
+  animation: successShake 0.3s ease;
+}
+
+@keyframes successShake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-2px, 1px); }
+  30% { transform: translate(2px, -1px); }
+  45% { transform: translate(-1px, 2px); }
+  60% { transform: translate(1px, -2px); }
+  75% { transform: translate(-2px, 0px); }
+  90% { transform: translate(2px, 1px); }
+}
+
 .drawing-canvas {
   width: 100%;
   height: 100%;
@@ -451,6 +474,12 @@ body {
   animation: fillIn 0.4s ease forwards;
 }
 
+.fill-pentagon,
+.fill-triangle {
+  opacity: 0;
+  animation: fillSlideIn 0.4s ease forwards;
+}
+
 .fill-pentagon {
   fill: rgba(126, 200, 227, 0.3);
 }
@@ -467,6 +496,17 @@ body {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes fillSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 

@@ -14,6 +14,8 @@ interface Props {
   portrait?: string;
   /** Whether to show the separate Line tool button. Default false (test mode sets true). */
   showLineTool?: boolean;
+  /** The default draw tool for this level. Used when switching back from eraser/move. */
+  defaultDrawTool?: Tool;
 }
 
 function Toolbar({
@@ -28,13 +30,14 @@ function Toolbar({
   onExport,
   portrait,
   showLineTool = false,
+  defaultDrawTool = 'pen',
 }: Props) {
   return (
     <div className="toolbar">
       <div className="toolbar-group">
         <button
           className={`tool-btn ${tool === 'pen' || (!showLineTool && tool === 'line') ? 'active' : ''}`}
-          onClick={() => onToolChange(showLineTool ? 'pen' : (tool === 'pen' || tool === 'line' ? tool : 'pen'))}
+          onClick={() => onToolChange(showLineTool ? 'pen' : defaultDrawTool)}
           title="Pen (press & drag to draw a line)"
         >
           Pen

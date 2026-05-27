@@ -24,6 +24,8 @@ export function closestPointOnSegment(
 /**
  * Intersection point of two segments, or null if they don't cross.
  * Touching endpoints count as an intersection.
+ * Nearly-collinear segments (angle < ~10°) are treated as parallel to
+ * avoid phantom intersections from imprecise overlapping lines.
  */
 export function segmentIntersection(
   a1: Point,
@@ -37,6 +39,16 @@ export function segmentIntersection(
   const dy2 = b2.y - b1.y;
   const denom = dx1 * dy2 - dy1 * dx2;
   if (denom === 0) return null; // parallel or collinear
+
+  // Skip nearly-collinear segments: if the angle between them is very small,
+  // any intersection is likely a phantom from imprecise overlap.
+  const len1 = Math.hypot(dx1, dy1);
+  const len2 = Math.hypot(dx2, dy2);
+  if (len1 > 0 && len2 > 0) {
+    const sinAngle = Math.abs(denom) / (len1 * len2);
+    if (sinAngle < 0.132) return null; // ~7.6° threshold
+  }
+
   const t = ((b1.x - a1.x) * dy2 - (b1.y - a1.y) * dx2) / denom;
   const u = ((b1.x - a1.x) * dy1 - (b1.y - a1.y) * dx1) / denom;
   const eps = 1e-9;

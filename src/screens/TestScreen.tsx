@@ -3,6 +3,7 @@ import DrawingCanvas from '../canvas/DrawingCanvas';
 import Toolbar from '../canvas/Toolbar';
 import CurvedSuccessOverlay from '../canvas/CurvedSuccessOverlay';
 import { useDrawingState } from '../canvas/useDrawingState';
+import { useKeyboardShortcuts } from '../canvas/useKeyboardShortcuts';
 import { analyze, type AnalysisResult } from '../analyzer/analyzer';
 import { vertexValidate, type VertexValidationResult } from '../analyzer/vertexValidation';
 import { generateFillOverlays } from '../analyzer/floodFill';
@@ -27,17 +28,28 @@ function TestScreen({ onBack }: Props) {
   // Run the analyzer every time lines change (for debug info display),
   // but only "lock" when the user explicitly validates.
   const analysis = useMemo(() => analyze(drawing.lines), [drawing.lines]);
-  const vResult = useMemo(() => vertexValidate(drawing.lines), [drawing.lines]);
+  const vResult = useMemo(() => {
+    console.time('vertexValidate');
+    const r = vertexValidate(drawing.lines);
+    console.timeEnd('vertexValidate');
+    return r;
+  }, [drawing.lines]);
+
+  // When user presses Validate, run the full check including geometry validation.
+  const vResultFull = useMemo(() => {
+    if (!validated) return vResult;
+    return vertexValidate(drawing.lines, true);
+  }, [validated, drawing.lines, vResult]);
 
   // Use vertex validation as primary.
   // Fall back to shared-edge triangle validation (old face-based analyzer)
   // ONLY if no vertex pair has multiple edges (which would cause false positives).
   let isValid = false;
-  if (vResult.isValidStar) {
+  if (vResultFull.isValidStar) {
     isValid = true;
   } else {
     let hasMultiEdge = false;
-    for (const [, count] of vResult.edgeMultiplicity) {
+    for (const [, count] of vResultFull.edgeMultiplicity) {
       if (count > 1) { hasMultiEdge = true; break; }
     }
     if (!hasMultiEdge) {
@@ -47,6 +59,8 @@ function TestScreen({ onBack }: Props) {
   // Only lock if the user pressed Validate.
   const locked = validated && isValid;
 
+  useKeyboardShortcuts(setTool, drawing.undo, drawing.redo, locked);
+
   // Reset validated when lines change (so you can keep drawing after clearing).
   useEffect(() => {
     setValidated(false);
@@ -55,6 +69,13 @@ function TestScreen({ onBack }: Props) {
   // Activate line boil after the fill animation finishes
   useEffect(() => {
     if (locked) {
+      // Trigger screen shake
+      const wrapper = wrapperRef.current;
+      if (wrapper) {
+        wrapper.classList.add('shake');
+        const removeShake = () => wrapper.classList.remove('shake');
+        wrapper.addEventListener('animationend', removeShake, { once: true });
+      }
       const timer = setTimeout(() => setBoilActive(true), 2400);
       return () => clearTimeout(timer);
     } else {
@@ -152,10 +173,23 @@ function TestScreen({ onBack }: Props) {
           className="tool-btn"
           onClick={() => {
             if (locked) {
-              const overlays = generateFillOverlays(vResult.pentagonVertices, vResult.tipAssignment, vResult.vertices, drawing.lines);
-              if (overlays) {
-                navigator.clipboard.writeText(overlays.debug).then(() => {
-                  setExportMessage('Fill debug copied!');
+              try {
+                const overlays = generateFillOverlays(vResultFull.pentagonVertices, vResultFull.tipAssignment, vResultFull.vertices, drawing.lines);
+                if (overlays) {
+                  navigator.clipboard.writeText(overlays.debug).then(() => {
+                    setExportMessage('Fill debug copied!');
+                    setTimeout(() => setExportMessage(''), 2000);
+                  });
+                } else {
+                  navigator.clipboard.writeText('generateFillOverlays returned null').then(() => {
+                    setExportMessage('Fill returned null - copied!');
+                    setTimeout(() => setExportMessage(''), 2000);
+                  });
+                }
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? `${e.message}\n${e.stack}` : String(e);
+                navigator.clipboard.writeText(msg).then(() => {
+                  setExportMessage('ERROR copied!');
                   setTimeout(() => setExportMessage(''), 2000);
                 });
               }
@@ -185,9 +219,9 @@ function TestScreen({ onBack }: Props) {
             successOverlay={
               locked ? (
                 <CurvedSuccessOverlay
-                  pentCycle={vResult.pentagonVertices}
-                  tipAssignment={vResult.tipAssignment}
-                  vertices={vResult.vertices}
+                  pentCycle={vResultFull.pentagonVertices}
+                  tipAssignment={vResultFull.tipAssignment}
+                  vertices={vResultFull.vertices}
                   lines={drawing.lines}
                 />
               ) : undefined

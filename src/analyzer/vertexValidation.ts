@@ -1,7 +1,8 @@
 import type { Line, Point } from '../canvas/types';
 import { getLineSegments, findLineIntersections, findSelfIntersections } from '../canvas/geometry';
+import { validatePentagonByMidpointFill } from './floodFill';
 
-const VERTEX_MERGE_DISTANCE = 6; // pixels
+const VERTEX_MERGE_DISTANCE = 9; // pixels (increased from 6 for more forgiving overlap detection)
 
 export interface VertexValidationResult {
   isValidStar: boolean;
@@ -22,7 +23,7 @@ export interface VertexValidationResult {
  * that each pentagon edge has exactly one triangle tip connecting to both endpoints.
  * Tips may be merged (multiple triangle roles served by one vertex).
  */
-export function vertexValidate(lines: Line[]): VertexValidationResult {
+export function vertexValidate(lines: Line[], runGeometryCheck = false): VertexValidationResult {
   const empty: VertexValidationResult = {
     isValidStar: false,
     message: '',
@@ -56,6 +57,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     findOrAdd(l.a);
     findOrAdd(l.b);
   }
+
   for (let i = 0; i < exploded.length; i++) {
     for (let j = i + 1; j < exploded.length; j++) {
       const ixs = findLineIntersections(exploded[i], exploded[j]);
@@ -122,6 +124,65 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     }
   }
 
+  // Step 3b: Contract degree-2 vertices that are collinear with their neighbors.
+  // These are intermediate points on what is effectively a single straight edge
+  // (common when overlapping lines create a chain like A→B→C where B is just a
+  // given-line endpoint sitting in the middle of the path).
+  let contracted = true;
+  while (contracted) {
+    contracted = false;
+    for (let v = 0; v < vertices.length; v++) {
+      const neighbors = adjacency.get(v);
+      if (!neighbors || neighbors.size !== 2) continue;
+      const [nA, nB] = [...neighbors];
+      // Check collinearity: is V roughly on the line from nA to nB?
+      const pV = vertices[v];
+      const pA = vertices[nA];
+      const pB = vertices[nB];
+      const edgeLen = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+      if (edgeLen < 1) continue;
+      // Distance from V to line segment A-B
+      const cross = Math.abs((pB.x - pA.x) * (pA.y - pV.y) - (pA.x - pV.x) * (pB.y - pA.y));
+      const distToLine = cross / edgeLen;
+      // Tolerance scales with edge length: for long edges 12px is fine,
+      // but for short edges we need to be much stricter to avoid swallowing real vertices.
+      const tolerance = Math.min(12, edgeLen * 0.2);
+      if (distToLine > tolerance) continue; // not collinear enough
+
+      // Also check that V actually projects BETWEEN A and B (not past either end).
+      // Without this, a vertex beyond the segment end can appear "close to the line"
+      // when the two neighbors are near each other.
+      const dx = pB.x - pA.x;
+      const dy = pB.y - pA.y;
+      const t = ((pV.x - pA.x) * dx + (pV.y - pA.y) * dy) / (edgeLen * edgeLen);
+      if (t < -0.1 || t > 1.1) continue; // V is not between A and B
+
+      // Contract: remove V, connect nA↔nB directly.
+      // Sum multiplicity of both edges into the new one.
+      const keyAV = Math.min(v, nA) + '-' + Math.max(v, nA);
+      const keyBV = Math.min(v, nB) + '-' + Math.max(v, nB);
+      const multAV = edgeMultiplicity.get(keyAV) ?? 1;
+      const multBV = edgeMultiplicity.get(keyBV) ?? 1;
+      const combinedMult = Math.max(multAV, multBV);
+
+      // Remove old edges
+      edgeMultiplicity.delete(keyAV);
+      edgeMultiplicity.delete(keyBV);
+      adjacency.get(nA)!.delete(v);
+      adjacency.get(nB)!.delete(v);
+      adjacency.set(v, new Set());
+
+      // Add new direct edge (or increase multiplicity if it already exists)
+      adjacency.get(nA)!.add(nB);
+      adjacency.get(nB)!.add(nA);
+      const keyAB = Math.min(nA, nB) + '-' + Math.max(nA, nB);
+      const existingMult = edgeMultiplicity.get(keyAB) ?? 0;
+      edgeMultiplicity.set(keyAB, existingMult + combinedMult);
+
+      contracted = true;
+    }
+  }
+
   // Count edges (including multi-edges).
   let edgeCount = 0;
   const seenEdges = new Set<string>();
@@ -141,12 +202,15 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
     edgeMultiplicity,
   };
 
-  if (vertices.length < 6) {
-    result.message = `${vertices.length} vertices. Need at least 6.`;
+  // Count only active vertices (those not contracted away).
+  const activeVertexCount = vertices.filter((_, i) => (adjacency.get(i)?.size ?? 0) > 0).length;
+
+  if (activeVertexCount < 6) {
+    result.message = `${activeVertexCount} vertices. Need at least 6.`;
     return result;
   }
-  if (vertices.length > 10) {
-    result.message = `${vertices.length} vertices. Maximum is 10.`;
+  if (activeVertexCount > 10) {
+    result.message = `${activeVertexCount} vertices. Maximum is 10.`;
     return result;
   }
 
@@ -165,11 +229,10 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
   for (const pentCycle of allCycles) {
     const validation = validateWithCycle(pentCycle, vertices, adjacency, seenEdges, edgeMultiplicity);
     if (validation.valid) {
-      // Final check: ensure no tip vertex is inside the pentagon.
-      const tipVertices = vertices.map((_, i) => i).filter((i) => !new Set(pentCycle).has(i));
-      const tipPoints = tipVertices.map((i) => vertices[i]);
-      if (isTipInsidePentagon(tipPoints, vertices, pentCycle, lines)) {
-        // A tip is inside the pentagon — this isn't a valid star.
+      // Final check: ensure no tip points inward using midpoint-based fill validation.
+      // Only run this expensive check when explicitly requested (not on every keystroke).
+      if (runGeometryCheck && !validatePentagonByMidpointFill(pentCycle, vertices, lines)) {
+        // Pentagon is not a single contiguous bounded region — a tip points inward.
         if (validation.tipsFound > bestProgress) {
           bestProgress = validation.tipsFound;
           bestCycle = pentCycle;
@@ -178,7 +241,7 @@ export function vertexValidate(lines: Line[]): VertexValidationResult {
       }
       result.isValidStar = true;
       result.pentagonVertices = pentCycle;
-      result.tipVertices = tipVertices;
+      result.tipVertices = vertices.map((_, i) => i).filter((i) => !new Set(pentCycle).has(i) && (adjacency.get(i)?.size ?? 0) > 0);
       result.tipAssignment = validation.assignment;
       result.message = '⭐ Valid 5-pointed star!';
       return result;
@@ -213,13 +276,14 @@ function validateWithCycle(
   const n = vertices.length;
 
   // For each pentagon edge, find ALL candidate tips (vertices connecting to both endpoints).
+  // Tips must NOT be pentagon vertices — only non-pentagon vertices can serve as tips.
   const candidates: number[][] = []; // candidates[i] = list of vertex indices that could serve edge i
   for (let i = 0; i < 5; i++) {
     const pA = pentCycle[i];
     const pB = pentCycle[(i + 1) % 5];
     const cands: number[] = [];
     for (let v = 0; v < n; v++) {
-      if (v === pA || v === pB) continue;
+      if (pentSet.has(v)) continue; // no pentagon vertex can be a tip
       if (adjacency.get(v)!.has(pA) && adjacency.get(v)!.has(pB)) {
         cands.push(v);
       }
@@ -327,17 +391,22 @@ function findAllPentagonCycles(
   vertices: Point[],
   adjacency: Map<number, Set<number>>,
 ): number[][] {
-  const n = vertices.length;
+  // Only consider active (non-contracted) vertices.
+  const active: number[] = [];
+  for (let i = 0; i < vertices.length; i++) {
+    if ((adjacency.get(i)?.size ?? 0) > 0) active.push(i);
+  }
+  const n = active.length;
   if (n < 5) return [];
 
   const cycles: number[][] = [];
 
-  for (let a = 0; a < n; a++) {
-    for (let b = a + 1; b < n; b++) {
-      for (let c = b + 1; c < n; c++) {
-        for (let d = c + 1; d < n; d++) {
-          for (let e = d + 1; e < n; e++) {
-            const group = [a, b, c, d, e];
+  for (let ai = 0; ai < n; ai++) {
+    for (let bi = ai + 1; bi < n; bi++) {
+      for (let ci = bi + 1; ci < n; ci++) {
+        for (let di = ci + 1; di < n; di++) {
+          for (let ei = di + 1; ei < n; ei++) {
+            const group = [active[ai], active[bi], active[ci], active[di], active[ei]];
             const cycle = findCycleInGroup(group, adjacency);
             if (cycle) cycles.push(cycle);
           }

@@ -26,6 +26,8 @@ export interface LevelData {
   introDialogue?: DialogueSequence;
   /** Dialogue shown after the player completes the star. */
   completionDialogue?: DialogueSequence;
+  /** Display scale override (0-1). Shrinks the star display without affecting gameplay. Default fills available space. */
+  displayScale?: number;
 }
 
 export interface NormalizedLine {

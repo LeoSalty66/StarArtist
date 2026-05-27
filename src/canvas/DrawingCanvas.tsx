@@ -50,6 +50,7 @@ function DrawingCanvas({
   const [cursor, setCursor] = useState<Point | null>(null);
   const [snap, setSnap] = useState<SnapTarget | null>(null);
   const [moveState, setMoveState] = useState<MoveState | null>(null);
+  const [moveBodySnaps, setMoveBodySnaps] = useState<Point[]>([]);
   const [lineToolState, setLineToolState] = useState<LineToolState | null>(null);
   // Freehand pen state
   const [isDrawing, setIsDrawing] = useState(false);
@@ -202,7 +203,41 @@ function DrawingCanvas({
     }
 
     if (tool === 'move' && moveState) {
-      setMoveState({ ...moveState, current: raw });
+      const { point, snap: moveSnap } = resolvePoint(raw);
+      setMoveState({ ...moveState, current: point });
+      setSnap(moveSnap);
+
+      // Compute body snaps: existing points that the moved line passes through.
+      const BODY_SNAP_DIST = 9;
+      const bodySnaps: Point[] = [];
+      // Get the moved line(s) in their new position.
+      for (const t of moveState.targets) {
+        const line = lines.find((l) => l.id === t.lineId);
+        if (!line) continue;
+        const movedA = t.endpoint === 'a' ? point : line.a;
+        const movedB = t.endpoint === 'b' ? point : line.b;
+        // Collect candidate points from other lines.
+        for (const other of lines) {
+          if (other.id === t.lineId) continue;
+          const candidates = [other.a, other.b];
+          // Also check intersections between other lines.
+          for (const other2 of lines) {
+            if (other2.id === t.lineId || other2.id <= other.id) continue;
+            const ixs = findLineIntersections(other, other2);
+            candidates.push(...ixs);
+          }
+          for (const c of candidates) {
+            if (dist(c, movedA) < BODY_SNAP_DIST || dist(c, movedB) < BODY_SNAP_DIST) continue;
+            const { distance } = closestPointOnDraftSegment(c, movedA, movedB);
+            if (distance <= BODY_SNAP_DIST) {
+              if (!bodySnaps.some((s) => dist(s, c) < 4)) {
+                bodySnaps.push(c);
+              }
+            }
+          }
+        }
+      }
+      setMoveBodySnaps(bodySnaps);
       return;
     }
 
@@ -278,9 +313,10 @@ function DrawingCanvas({
 
     if (tool === 'move' && moveState) {
       const raw = getSvgPoint(e.clientX, e.clientY);
-      const finalPoint = raw ?? moveState.current;
+      const finalPoint = raw ? resolvePoint(raw).point : moveState.current;
       onMovePoint(moveState.targets.map((t) => ({ ...t, to: finalPoint })));
       setMoveState(null);
+      setMoveBodySnaps([]);
       return;
     }
   };
@@ -457,14 +493,41 @@ function DrawingCanvas({
 
       {/* Move tool: highlight */}
       {tool === 'move' && moveState && (
-        <circle
-          cx={moveState.current.x}
-          cy={moveState.current.y}
-          r={6}
-          fill="#7ec8e3"
-          opacity={0.8}
-          pointerEvents="none"
-        />
+        <>
+          <circle
+            cx={moveState.current.x}
+            cy={moveState.current.y}
+            r={6}
+            fill="#7ec8e3"
+            opacity={0.8}
+            pointerEvents="none"
+          />
+          {snap && (
+            <circle
+              cx={snap.point.x}
+              cy={snap.point.y}
+              r={7}
+              fill="none"
+              stroke="#b088f9"
+              strokeWidth={2}
+              opacity={0.8}
+              pointerEvents="none"
+            />
+          )}
+          {moveBodySnaps.map((p, i) => (
+            <circle
+              key={`move-body-snap-${i}`}
+              cx={p.x}
+              cy={p.y}
+              r={6}
+              fill="none"
+              stroke="#b088f9"
+              strokeWidth={2}
+              opacity={0.8}
+              pointerEvents="none"
+            />
+          ))}
+        </>
       )}
 
       {/* Snap indicator */}

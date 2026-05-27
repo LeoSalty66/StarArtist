@@ -52,11 +52,19 @@ export function saveStar(levelId: string, lines: Line[]): void {
     by: (l.b.y - minY) / size,
   }));
 
+  // Place stars in the top third of the screen, on the left or right third
+  // (avoiding the center where the logo/character will be).
+  const onLeft = Math.random() < 0.5;
+  const xPos = onLeft
+    ? 0.02 + Math.random() * 0.30   // left third: 2%-32%
+    : 0.68 + Math.random() * 0.30;  // right third: 68%-98%
+  const yPos = 0.03 + Math.random() * 0.30; // top third: 3%-33%
+
   const star: SavedStar = {
     levelId,
     lines: normalized,
-    x: 0.05 + Math.random() * 0.9,
-    y: 0.05 + Math.random() * 0.9,
+    x: xPos,
+    y: yPos,
     rotation: Math.random() * 360,
     scale: 0.6 + Math.random() * 0.5,
     completedAt: new Date().toISOString(),
